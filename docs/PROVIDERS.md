@@ -56,7 +56,7 @@ deliberately does not try.
 | Server | Mode | Result | How |
 |---|---|---|---|
 | llama.cpp `llama-server` 0.8.0 (`--jinja`), Gemma 4 E4B Q4_K_M | stream + non-stream | multi-step workflow PASS; autonomous actuation refused | `live_agent` from the host (2026-11-01) |
-| Anthropic API | — | not run (no key available) | fixtures + mock-transport tests |
+| Anthropic API, `claude-haiku-5-5` | stream | PASS: 2 parallel tool calls in one turn, verified actuation, 3 turns in 2.7 s, usage 904/230 tokens; autonomous run's `set_actuator` attempt rejected by policy at execution time | `live_agent` from the host with the user's key (2026-11-01) |
 | Ollama, LM Studio, vLLM, OpenAI | — | not run | fixtures cover their documented formats |
 
 Run the live test yourself:

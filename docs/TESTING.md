@@ -80,6 +80,12 @@ Additional hardware results (second session):
 Still open:
 
 - **BLE:** characteristic read on a real sensor (item 10) and peripheral pairing from a phone.
-- **Other servers and providers:** Anthropic with a real key (user-run; see below); Ollama, LM Studio, vLLM, OpenAI.
+- **Other servers and providers:** Ollama, LM Studio, vLLM, OpenAI. Anthropic passes from the host (`live_agent`, real key) but has not yet been run from the device itself.
+
+Anthropic live finding: in the autonomous run the model called `set_actuator`
+although the tool was not advertised to that source (it remembered the tool
+from the earlier run's context). The policy check at execution time rejected
+it with `permission_denied`. Not advertising a tool is not a security
+boundary; the per-call check is.
 - **Secure build** on hardware: irreversible, so not done.
 - **Power measurement.**
