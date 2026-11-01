@@ -6,9 +6,11 @@
  *   live_agent <openai|anthropic> <base_url> <model> [stream 0|1]
  *   API key (if any) is read from the LLA_API_KEY environment variable.
  *
- * Transport: minimal HTTP/1.1 over POSIX sockets (http:// only) with chunked
+ * Transports: https:// via libcurl (certificate verification on, as on the
+ * device); http:// via a minimal HTTP/1.1 socket client with chunked
  * decoding — enough for local servers such as llama-server, Ollama, LM Studio.
  */
+#include <curl/curl.h>
 #include <netdb.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -49,9 +51,12 @@ void lla_unlock(lla_lock_t *l) { (void)l; }
 
 static int sink_body(const llm_http_sink_t *s, const char *d, size_t n) { return s->on_data(s->u, d, n); }
 
+static llm_tr_err_t curl_perform(const llm_http_req_t *req, const llm_http_sink_t *sink);
+
 static llm_tr_err_t sock_perform(llm_transport_t *t, const llm_http_req_t *req, const llm_http_sink_t *sink)
 {
     (void)t;
+    if (!strncmp(req->url, "https://", 8)) return curl_perform(req, sink);
     char host[128], port[8] = "80";
     const char *p = req->url;
     if (strncmp(p, "http://", 7) != 0) return LLM_TR_CONFIG;
@@ -145,6 +150,84 @@ static llm_tr_err_t sock_perform(llm_transport_t *t, const llm_http_req_t *req, 
     }
     close(fd);
     return res;
+}
+
+/* ------------------------------------------------------------ libcurl transport (https) */
+
+typedef struct {
+    const llm_http_sink_t *sink;
+    bool status_sent;
+    bool aborted;
+} curl_ctx_t;
+
+static size_t curl_header(char *b, size_t sz, size_t n, void *u)
+{
+    curl_ctx_t *c = u;
+    size_t len = sz * n;
+    char line[256];
+    snprintf(line, sizeof(line), "%.*s", (int)(len < 255 ? len : 255), b);
+    line[strcspn(line, "\r\n")] = 0;
+    if (!strncmp(line, "HTTP/", 5)) {
+        const char *sp = strchr(line, ' ');
+        if (sp) c->sink->on_status(c->sink->u, atoi(sp + 1));
+        c->status_sent = true;
+    } else {
+        char *colon = strchr(line, ':');
+        if (colon) {
+            *colon = 0;
+            const char *v = colon + 1;
+            while (*v == ' ') v++;
+            c->sink->on_header(c->sink->u, line, v);
+        }
+    }
+    return len;
+}
+
+static size_t curl_body(char *b, size_t sz, size_t n, void *u)
+{
+    curl_ctx_t *c = u;
+    if (c->sink->on_data(c->sink->u, b, sz * n)) {
+        c->aborted = true;
+        return 0;
+    }
+    return sz * n;
+}
+
+static llm_tr_err_t curl_perform(const llm_http_req_t *req, const llm_http_sink_t *sink)
+{
+    CURL *h = curl_easy_init();
+    if (!h) return LLM_TR_CONFIG;
+    struct curl_slist *hdrs = NULL;
+    for (int i = 0; i < req->n_headers; i++) {
+        char line[512];
+        snprintf(line, sizeof(line), "%s: %s", req->headers[i].name, req->headers[i].value);
+        hdrs = curl_slist_append(hdrs, line);
+    }
+    curl_ctx_t c = {.sink = sink};
+    curl_easy_setopt(h, CURLOPT_URL, req->url);
+    curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
+    if (!strcmp(req->method, "POST")) {
+        curl_easy_setopt(h, CURLOPT_POSTFIELDS, req->body);
+        curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE, (long)req->body_len);
+    }
+    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, (long)req->timeout_ms);
+    curl_easy_setopt(h, CURLOPT_HEADERFUNCTION, curl_header);
+    curl_easy_setopt(h, CURLOPT_HEADERDATA, &c);
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, curl_body);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, &c);
+    CURLcode rc = curl_easy_perform(h);
+    curl_slist_free_all(hdrs);
+    curl_easy_cleanup(h);
+    if (c.aborted) return LLM_TR_ABORTED;
+    switch (rc) {
+    case CURLE_OK: return LLM_TR_OK;
+    case CURLE_OPERATION_TIMEDOUT: return LLM_TR_TIMEOUT;
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_CONNECT: return LLM_TR_CONNECT;
+    case CURLE_PEER_FAILED_VERIFICATION:
+    case CURLE_SSL_CONNECT_ERROR: return LLM_TR_TLS;
+    default: return LLM_TR_IO;
+    }
 }
 
 /* ------------------------------------------------------------ mock tools */

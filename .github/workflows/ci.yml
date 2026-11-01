@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake libcurl4-openssl-dev
       - name: Build and test (ASan/UBSan)
         run: |
           cmake -S tests/host -B build-host -G Ninja

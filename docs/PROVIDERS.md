@@ -71,7 +71,7 @@ cmake -S tests/host -B build-host && cmake --build build-host
 LLA_API_KEY=sk-ant-... ./build-host/live_agent anthropic https://api.anthropic.com claude-haiku-5-5 1
 ```
 
-`live_agent` speaks plain HTTP only. On the device, TLS is provided by esp_http_client.
+`live_agent` uses libcurl for `https:` URLs (certificate verification on) and a minimal socket client for plain `http:`. On the device, TLS is provided by esp_http_client.
 
 ## Repeated tool descriptions
 
