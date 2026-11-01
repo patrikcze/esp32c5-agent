@@ -43,6 +43,7 @@ void llm_cfg_default(llm_cfg_t *c, llm_kind_t kind)
         strcpy(c->base_url, "https://api.anthropic.com");
         strcpy(c->model, "claude-haiku-5-5");
         c->prompt_cache = true;
+        c->temperature = -1; /* current Claude models reject `temperature`; omit it */
     } else {
         strcpy(c->base_url, "http://192.168.1.100:8080/v1");
         strcpy(c->model, "local-model");

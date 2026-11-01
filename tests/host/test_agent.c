@@ -476,6 +476,7 @@ static void test_anthropic_workflow(void)
     CHECK_CONTAINS(s_mock.reqs[1], "\"type\":\"tool_use\",\"id\":\"toolu_01A\",\"name\":\"read_sensor\",\"input\":{\"device\":\"room_temp\"}");
     CHECK_CONTAINS(s_mock.reqs[1], "\"type\":\"tool_result\",\"tool_use_id\":\"toolu_01A\"");
     CHECK_CONTAINS(s_mock.reqs[1], "\"cache_control\"");
+    CHECK(strstr(s_mock.reqs[0], "temperature") == NULL); /* rejected by current Claude models */
     CHECK_STR(agent_last_text(&s_agent), "Done: fan is on.");
     CHECK_EQ_INT(r.in_tokens, 512 + 700);
 }
