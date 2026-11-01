@@ -44,7 +44,8 @@ static void x_caps(const tool_def_t *d, const tool_args_t *a, uint64_t dl, tool_
     (void)d; (void)a; (void)dl;
     lla_jw_kv_str(&r->w, "board", periph_board() ? periph_board()->name : "?");
     lla_jw_key(&r->w, "devices");
-    periph_describe(&r->w);
+    int omitted = periph_describe(&r->w, 96);
+    if (omitted) lla_jw_kv_int(&r->w, "devices_omitted", omitted);
 }
 
 /* ----------------------------------------------------------- sensors */

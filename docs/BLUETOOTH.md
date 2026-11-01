@@ -9,7 +9,7 @@ with up to 2 connections and up to 4 bonds stored in NVS.
 | Operation | Tool | Console | Limits |
 |---|---|---|---|
 | scan | `ble_scan` | `/ble scan [secs] [prefix]` | 0.5–10 s; table of 16 devices; name-prefix filter |
-| list | `ble_list_devices` | `/ble list` | — |
+| list | `ble_list_devices` | `/ble list` | strongest signal first, as many as fit in one tool result; `shown`/`total` mark a partial list |
 | connect | `ble_connect` | `/ble connect <n>` | **allowlisted addresses only**; one central link |
 | discover | `ble_discover_services` | `/ble services` | 12 services / 32 characteristics |
 | read | `ble_read_characteristic` | `/ble read <uuid>` | 64 bytes |

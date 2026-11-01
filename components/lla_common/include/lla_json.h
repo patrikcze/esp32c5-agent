@@ -115,6 +115,19 @@ void lla_jw_escaped(lla_jw_t *w, const char *s, size_t n);
 /** Low level: append bytes unchanged (no separators). */
 void lla_jw_put(lla_jw_t *w, const char *s, size_t n);
 
+/*
+ * Bounded lists: take a snapshot (plain struct copy) before each element and
+ * roll back when the element would leave less than `reserve` bytes for the
+ * closing brackets and trailing fields. The list then ends early but stays
+ * valid JSON instead of the whole result being lost.
+ */
+static inline bool lla_jw_room(const lla_jw_t *w, size_t reserve) { return !w->overflow && w->len + reserve < w->cap; }
+static inline void lla_jw_rollback(lla_jw_t *w, const lla_jw_t *snap)
+{
+    *w = *snap;
+    if (w->cap) w->buf[w->len] = '\0';
+}
+
 /* Convenience key/value helpers. */
 static inline void lla_jw_kv_str(lla_jw_t *w, const char *k, const char *v) { lla_jw_key(w, k); lla_jw_str(w, v); }
 static inline void lla_jw_kv_int(lla_jw_t *w, const char *k, int64_t v) { lla_jw_key(w, k); lla_jw_int(w, v); }

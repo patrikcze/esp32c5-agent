@@ -257,6 +257,31 @@ static void test_max_on_watchdog(void)
     CHECK_EQ_INT(g_level[23], 0);
 }
 
+static void test_describe_bounded(void)
+{
+    load_ok(); /* 11 devices */
+    char buf[300];
+    lla_jw_t w;
+    lla_jw_init(&w, buf, sizeof(buf));
+    lla_jw_obj_begin(&w);
+    lla_jw_key(&w, "devices");
+    int omitted = periph_describe(&w, 64);
+    CHECK(omitted > 0 && omitted < 11);
+    lla_jw_kv_int(&w, "devices_omitted", omitted);
+    lla_jw_obj_end(&w);
+    CHECK(lla_jw_ok(&w));
+    lla_jtok_t t[128];
+    CHECK(lla_json_parse(buf, strlen(buf), t, 128) > 0); /* partial list, still valid JSON */
+    CHECK_CONTAINS(buf, "status_led");
+    char big[4096];
+    lla_jw_init(&w, big, sizeof(big));
+    lla_jw_obj_begin(&w);
+    lla_jw_key(&w, "devices");
+    CHECK_EQ_INT(periph_describe(&w, 64), 0);
+    lla_jw_obj_end(&w);
+    CHECK(lla_jw_ok(&w));
+}
+
 static void test_sensors(void)
 {
     load_ok();
@@ -759,6 +784,7 @@ void suite_periph(void)
     RUN(test_actuation_policy);
     RUN(test_max_on_watchdog);
     RUN(test_sensors);
+    RUN(test_describe_bounded);
     RUN(test_bus_authorization);
     RUN(test_periph_tools);
 }

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "agent_service.h"
 #include "config.h"
@@ -166,6 +167,13 @@ void app_main(void)
 #endif
     if (policy_load(&s_reg) == 0) ESP_LOGI(TAG, "stored tool policy applied");
     ESP_LOGI(TAG, "%u tools registered", s_reg.count);
+
+    /* local time zone for get_time (POSIX TZ string, /time tz) */
+    char tz[64];
+    if (cfg_get_str(CFG_NS, "tz", tz, sizeof(tz)) == CFG_OK && tz[0]) {
+        setenv("TZ", tz, 1);
+        tzset();
+    }
 
     /* 3. networking */
     char *ca = malloc(3072);

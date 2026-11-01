@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "agent_service.h"
 #include "config.h"
@@ -76,6 +77,7 @@ static int c_help(int argc, char **argv)
 #endif
            "  /memory                           heap, stacks, context and flash-write stats\n"
            "  /config                           export non-secret configuration\n"
+           "  /time [tz <POSIX TZ>]             show time; set time zone (e.g. CET-1CEST,M3.5.0,M10.5.0/3)\n"
            "  /ota <https-url>                  firmware update\n"
 #if CONFIG_LLA_BENCHMARK
            "  /bench [json|llm <n> [ble]]       benchmarks (ble: scan concurrently)\n"
@@ -598,6 +600,31 @@ static int c_agent(int argc, char **argv)
     return 0;
 }
 
+/* ------------------------------------------------------------ /time */
+
+static int c_time(int argc, char **argv)
+{
+    if (argc >= 3 && is(argv[1], "tz")) {
+        /* POSIX TZ string, e.g. CET-1CEST,M3.5.0,M10.5.0/3 (Central Europe) */
+        if (strlen(argv[2]) > 60) {
+            printf("time zone string too long\n");
+            return 1;
+        }
+        setenv("TZ", argv[2], 1);
+        tzset();
+        printf(cfg_set_str(CFG_NS, "tz", argv[2]) < 0 ? "applied, NOT persisted\n" : "time zone stored\n");
+    }
+    time_t now = time(NULL);
+    struct tm loc;
+    localtime_r(&now, &loc);
+    char b[48];
+    strftime(b, sizeof(b), "%Y-%m-%d %H:%M:%S %Z", &loc);
+    net_status_t ns;
+    net_get_status(&ns);
+    printf("%s (%s)  tz=%s\n", b, ns.time_synced ? "synced" : "NOT synced", getenv("TZ") ? getenv("TZ") : "UTC");
+    return 0;
+}
+
 /* ------------------------------------------------------------ /config /ota /reset */
 
 static int c_config(int argc, char **argv)
@@ -816,6 +843,7 @@ int console_start(tool_registry_t *reg, const console_env_t *env)
         {.command = "/agent", .help = "agent", .func = c_agent},
         {.command = "/ask", .help = "ask the agent", .func = c_ask},
         {.command = "/config", .help = "config export", .func = c_config},
+        {.command = "/time", .help = "time / time zone", .func = c_time},
         {.command = "/ota", .help = "OTA update", .func = c_ota},
         {.command = "/reset", .help = "reset", .func = c_reset},
 #if CONFIG_LLA_BENCHMARK

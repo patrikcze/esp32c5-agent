@@ -792,12 +792,14 @@ int periph_add_spare(int pin, bool output, hal_pull_t pull, char *name_out, size
     return d->faults ? PER_ERR_HW : idx;
 }
 
-void periph_describe(lla_jw_t *w)
+int periph_describe(lla_jw_t *w, size_t reserve)
 {
+    int shown = 0;
     lla_lock(&S.lock);
     lla_jw_arr_begin(w);
     for (int i = 0; i < S.n; i++) {
         const periph_dev_t *d = &S.dev[i];
+        lla_jw_t snap = *w;
         const dev_cfg_t *c = &d->cfg;
         lla_jw_obj_begin(w);
         lla_jw_kv_str(w, "name", c->name);
@@ -820,7 +822,13 @@ void periph_describe(lla_jw_t *w)
         if (c->type == DEV_UART) lla_jw_kv_bool(w, "agent_writable", c->llm_write);
         if (d->faults) lla_jw_kv_int(w, "faults", d->faults);
         lla_jw_obj_end(w);
+        if (!lla_jw_room(w, reserve)) {
+            lla_jw_rollback(w, &snap);
+            break;
+        }
+        shown++;
     }
     lla_jw_arr_end(w);
     lla_unlock(&S.lock);
+    return S.n - shown;
 }

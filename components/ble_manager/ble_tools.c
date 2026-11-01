@@ -29,24 +29,49 @@ static void fail(tool_result_t *r, int rc)
     tool_result_fail(r, st, ble_err_str(rc), NULL);
 }
 
+/* Devices strongest-signal first, as many as fit; "shown"/"total" tell the
+ * model when the list is partial (use a name_prefix filter to narrow it). */
 static void write_seen(lla_jw_t *w)
 {
+    int n = ble_mgr_seen_count();
+    int8_t order[BLE_MAX_SEEN];
+    for (int i = 0; i < n; i++) order[i] = (int8_t)i;
+    for (int i = 1; i < n; i++) { /* insertion sort by RSSI, n <= 16 */
+        int8_t k = order[i];
+        int j = i - 1;
+        while (j >= 0 && ble_mgr_seen(order[j])->rssi < ble_mgr_seen(k)->rssi) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = k;
+    }
+    int shown = 0;
+    lla_jw_key(w, "devices");
     lla_jw_arr_begin(w);
-    for (int i = 0; i < ble_mgr_seen_count(); i++) {
+    for (int o = 0; o < n; o++) {
+        int i = order[o];
         const ble_seen_t *s = ble_mgr_seen(i);
         char a[18];
         ble_addr_str(s->addr, a);
+        lla_jw_t snap = *w;
         lla_jw_obj_begin(w);
         lla_jw_kv_int(w, "index", i);
         lla_jw_kv_str(w, "addr", a);
         if (s->name[0]) lla_jw_kv_str(w, "name", s->name);
         lla_jw_kv_int(w, "rssi", s->rssi);
         bool rw = false;
-        lla_jw_kv_bool(w, "authorized", ble_mgr_allowed(s->addr, &rw));
+        if (ble_mgr_allowed(s->addr, &rw)) lla_jw_kv_bool(w, "authorized", true);
         if (s->ess) lla_jw_kv_bool(w, "env_sensing", true);
         lla_jw_obj_end(w);
+        if (!lla_jw_room(w, 64)) {
+            lla_jw_rollback(w, &snap);
+            break;
+        }
+        shown++;
     }
     lla_jw_arr_end(w);
+    lla_jw_kv_int(w, "shown", shown);
+    lla_jw_kv_int(w, "total", n);
 }
 
 static const tool_arg_def_t A_SCAN[] = {
@@ -62,8 +87,6 @@ static void x_scan(const tool_def_t *d, const tool_args_t *a, uint64_t dl, tool_
         fail(r, n);
         return;
     }
-    lla_jw_kv_int(&r->w, "found", n);
-    lla_jw_key(&r->w, "devices");
     write_seen(&r->w);
 }
 
@@ -71,7 +94,6 @@ static void x_list(const tool_def_t *d, const tool_args_t *a, uint64_t dl, tool_
 {
     (void)d; (void)a; (void)dl;
     lla_jw_kv_bool(&r->w, "connected", ble_mgr_connected());
-    lla_jw_key(&r->w, "devices");
     write_seen(&r->w);
 }
 
@@ -110,10 +132,12 @@ static void x_discover(const tool_def_t *d, const tool_args_t *a, uint64_t dl, t
     }
     lla_jw_key(&r->w, "characteristics");
     lla_jw_arr_begin(&r->w);
-    for (int i = 0; i < n && i < 16; i++) {
+    int shown = 0;
+    for (int i = 0; i < n; i++) {
         char u[40];
         uint8_t p;
         ble_mgr_chr_describe(i, u, sizeof(u), &p);
+        lla_jw_t snap = r->w;
         lla_jw_obj_begin(&r->w);
         lla_jw_kv_str(&r->w, "uuid", u);
         char props[8] = "";
@@ -123,8 +147,15 @@ static void x_discover(const tool_def_t *d, const tool_args_t *a, uint64_t dl, t
         if (p & 0x20) strcat(props, "i");
         lla_jw_kv_str(&r->w, "props", props);
         lla_jw_obj_end(&r->w);
+        if (!lla_jw_room(&r->w, 64)) {
+            lla_jw_rollback(&r->w, &snap);
+            break;
+        }
+        shown++;
     }
     lla_jw_arr_end(&r->w);
+    lla_jw_kv_int(&r->w, "shown", shown);
+    lla_jw_kv_int(&r->w, "total", n);
 }
 
 static const tool_arg_def_t A_UUID[] = {{.name = "uuid", .desc = "e.g. \"2a6e\" or 128-bit", .type = TARG_STR,

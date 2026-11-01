@@ -544,7 +544,8 @@ static int gatt_access(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt
             lla_jw_kv_bool(&w, "agent_busy", agent_service_busy());
         } else {
             lla_jw_key(&w, "devices");
-            periph_describe(&w);
+            int om = periph_describe(&w, 64);
+            if (om) lla_jw_kv_int(&w, "omitted", om);
         }
         lla_jw_obj_end(&w);
         if (!lla_jw_ok(&w)) strcpy(buf, "{\"truncated\":true}");

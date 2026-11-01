@@ -3,7 +3,10 @@
  * proposal (which only queues a proposal for local approval).
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
@@ -42,6 +45,30 @@ static void x_uptime(const tool_def_t *d, const tool_args_t *a, uint64_t dl, too
     (void)d; (void)a; (void)dl;
     lla_jw_kv_int(&r->w, "uptime_s", esp_timer_get_time() / 1000000);
     lla_jw_kv_int(&r->w, "reset_reason", esp_reset_reason());
+}
+
+static void x_time(const tool_def_t *d, const tool_args_t *a, uint64_t dl, tool_result_t *r)
+{
+    (void)d; (void)a; (void)dl;
+    net_status_t s;
+    net_get_status(&s);
+    time_t now = time(NULL);
+    if (!s.time_synced && now < 1735689600) { /* RTC not yet set (before 2025) */
+        tool_result_fail(r, TOOL_ST_ERROR, "time_not_synchronised", "no network time yet");
+        return;
+    }
+    struct tm utc, loc;
+    gmtime_r(&now, &utc);
+    localtime_r(&now, &loc);
+    char b[40];
+    strftime(b, sizeof(b), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    lla_jw_kv_str(&r->w, "utc", b);
+    strftime(b, sizeof(b), "%Y-%m-%d %H:%M:%S %Z", &loc);
+    lla_jw_kv_str(&r->w, "local", b);
+    strftime(b, sizeof(b), "%A", &loc);
+    lla_jw_kv_str(&r->w, "weekday", b);
+    const char *tz = getenv("TZ");
+    lla_jw_kv_str(&r->w, "timezone", tz && tz[0] ? tz : "UTC (not configured)");
 }
 
 static void x_heap(const tool_def_t *d, const tool_args_t *a, uint64_t dl, tool_result_t *r)
@@ -118,6 +145,8 @@ static const tool_def_t k_tools[] = {
      .timeout_ms = 100, .exec = x_system_info},
     {.name = "get_uptime", .desc = "Seconds since boot and last reset reason.", .perm = TOOL_PERM_READ,
      .timeout_ms = 100, .exec = x_uptime},
+    {.name = "get_time", .desc = "Current date and time (UTC and the configured local time zone).",
+     .perm = TOOL_PERM_READ, .timeout_ms = 100, .exec = x_time},
     {.name = "get_free_heap", .desc = "Free, minimum-ever and largest-block heap bytes.", .perm = TOOL_PERM_READ,
      .timeout_ms = 100, .exec = x_heap},
     {.name = "get_network_status", .desc = "Wi-Fi state, SSID, RSSI, time sync.", .perm = TOOL_PERM_READ,

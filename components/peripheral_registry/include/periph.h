@@ -180,8 +180,11 @@ int periph_add_spare(int pin, bool output, hal_pull_t pull, char *name_out, size
 #define PERIPH_BY_LOCAL (-2) /* local console operator: bypasses llm_write, not locks */
 #define PERIPH_BY_WATCHDOG 0x7f
 
-/** JSON description of devices for get_registered_capabilities. */
-void periph_describe(lla_jw_t *w);
+/**
+ * JSON array of devices for get_registered_capabilities. Stops early so that
+ * at least @p reserve bytes stay free; returns the number of devices omitted.
+ */
+int periph_describe(lla_jw_t *w, size_t reserve);
 /** Validate a pin for a given use without assigning it. */
 bool periph_pin_ok(int pin, uint8_t need_caps, bool allow_strap, char *why, size_t whycap);
 

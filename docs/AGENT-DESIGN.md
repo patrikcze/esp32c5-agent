@@ -83,6 +83,14 @@ before `exec` runs. Timeouts are cooperative: each tool receives an absolute
 deadline and must bound its blocking calls (I2C, UART and BLE timeouts are
 derived from it).
 
+## Bounded tool results
+
+A tool result holds at most 768 bytes, and every list tool stays within that
+limit. Device, BLE and GATT lists add entries until the next one would not
+fit, then report `shown`/`total` (or `devices_omitted`), so the model learns
+that the list is partial. Earlier versions replaced an oversized result with
+`result_truncated` and lost everything.
+
 ## Permissions
 
 The permission levels are READ < ACTUATE < CONFIG < DANGEROUS, with one
