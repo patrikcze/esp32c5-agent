@@ -23,8 +23,9 @@ The temperature is 29.5 °C, above 28 °C; the cooling fan is now on.
 | Console, device registry, GPIO/RGB/temperature sensor init | ✅ hardware | `/devices` shows live chip temperature |
 | BLE scan (central) | ✅ hardware | `/ble scan` found nearby advertisers |
 | Agent loop + OpenAI-compatible protocol with a **real** server | ✅ host | `live_agent` vs llama-server + Gemma 4 E4B (stream and non-stream) |
-| Agent state machine, both protocols, failure handling | ✅ host | 523 checks under ASan/UBSan |
+| Agent state machine, both protocols, failure handling | ✅ host | 539 checks under ASan/UBSan |
 | Wi-Fi, TLS, LLM tool workflow **from the device** (fan via GPIO readback) | ✅ hardware | 13 of 14 checklist items pass on the board, see docs/TESTING.md |
+| Safety-rule lock vs agent, OTA + rollback, BLE coexistence latency | ✅ hardware | docs/TESTING.md, docs/PERFORMANCE.md |
 | Anthropic against the live API | ⏳ needs API key | fixtures + mock-transport tests only |
 | BLE connect/read on a real sensor, peripheral pairing | ⏳ needs a BLE sensor / phone | checklist items 9–10 |
 

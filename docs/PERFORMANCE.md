@@ -73,11 +73,15 @@ llama-server closes idle keep-alive connections between turns. The
 transport detects the dead socket before any response byte arrives and
 reconnects once (~75 ms); no agent-level retry is needed.
 
+| short LLM round trip (`/bench llm 5`, "OK" reply) | 362 ms avg (306–392) |
+| same, BLE scanning continuously (`/bench llm 5 ble`) | 380 ms avg (358–399), +5 % |
+| internal heap minimum with Wi-Fi + HTTP + continuous BLE scan | 18,840 B |
+| OTA download + write (1.69 MB, HTTPS, private CA) | 12.9 s |
+
 **Not measured on the device yet:**
 
 | Metric | Command |
 |---|---|
-| BLE scan impact on LLM latency | `/bench llm 5` with and without `/ble scan 10` |
 | power consumption | requires an ammeter on the J5 jumper (see the DevKitC-1 user guide) |
 
 ## BLE

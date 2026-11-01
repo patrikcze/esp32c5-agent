@@ -49,6 +49,7 @@ add_executable(live_agent ${ROOT}/tests/integration/live_agent.c ${PORTABLE_SRCS
 target_include_directories(live_agent PRIVATE ${C}/lla_common/include ${C}/tool_registry/include
     ${C}/llm_provider/include ${C}/agent_core/include)
 target_compile_options(live_agent PRIVATE -Wall -Wextra -Wno-unused-parameter)
+target_link_libraries(live_agent PRIVATE m)
 if(LLA_SANITIZE)
     target_compile_options(live_agent PRIVATE -fsanitize=address,undefined)
     target_link_options(live_agent PRIVATE -fsanitize=address,undefined)

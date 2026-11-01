@@ -6,7 +6,7 @@
 cmake -S tests/host -B build-host -G Ninja && cmake --build build-host && ctest --test-dir build-host --output-on-failure
 ```
 
-The suite runs 523 checks across 10 test groups, compiled with
+The suite runs 539 checks across 10 test groups, compiled with
 `-Wall -Wextra -Werror` and AddressSanitizer + UndefinedBehaviorSanitizer.
 The `-DLLA_SANITIZE=OFF` option turns the sanitizers off.
 
@@ -66,15 +66,20 @@ HTTP, with no API key.
 | 13 | Recover from a malformed response | ✅ | test server sent a truncated `set_actuator` call; 4 attempts rejected, ERROR, fan unchanged |
 | 14 | Deterministic automation while the LLM is unavailable | ✅ | provider unreachable (port 9): rule `chip_temp > 20` switched the fan on and set LOCKED; the agent's retries failed gracefully |
 
+Additional hardware results (second session):
+
+| Check | Observed |
+|---|---|
+| Safety lock vs. the agent | rule `chip_temp > 20` held the fan; agent `set_actuator 0` → `locked_by_safety_rule`; fan stayed on, and the model explained why |
+| Event → autonomous run | `rule_on` trigger started an autonomous run that read and reported the temperature |
+| OTA from a LAN HTTPS server with a private CA | 1.69 MB written in 12.9 s, rebooted into the other slot, health check passed, marked valid |
+| OTA rollback | image with a forced health-check failure → `rolling back` → bootloader returned to the previous image |
+| BLE scan impact on LLM latency | short request 362 ms average without scanning vs. 380 ms with continuous scanning (+5 %) |
+| Streamed token usage | reported (e.g. 2371 in / 603 out) |
+
 Still open:
 
-- **BLE:** characteristic read (item 10) and peripheral pairing.
-- **Safety lock vs. the agent on hardware.** The agent's "switch off"
-  request while the rule lock is active was queued but not observed: the
-  board reset when the port reopened. Covered by a host unit test.
-- **Other servers and providers:** Anthropic with a real key; Ollama, LM
-  Studio, vLLM, OpenAI.
-- **OTA and rollback** on hardware.
+- **BLE:** characteristic read on a real sensor (item 10) and peripheral pairing from a phone.
+- **Other servers and providers:** Anthropic with a real key (user-run; see below); Ollama, LM Studio, vLLM, OpenAI.
 - **Secure build** on hardware: irreversible, so not done.
 - **Power measurement.**
-- **BLE scan impact** on LLM latency.

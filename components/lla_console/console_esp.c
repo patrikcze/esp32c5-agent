@@ -77,7 +77,7 @@ static int c_help(int argc, char **argv)
            "  /config                           export non-secret configuration\n"
            "  /ota <https-url>                  firmware update\n"
 #if CONFIG_LLA_BENCHMARK
-           "  /bench [json|llm <n>]             benchmarks\n"
+           "  /bench [json|llm <n> [ble]]       benchmarks (ble: scan concurrently)\n"
 #endif
            "  /reset [reboot|factory|context]\n");
     return 0;
@@ -644,6 +644,18 @@ static int c_reset(int argc, char **argv)
 /* ------------------------------------------------------------ /bench */
 
 #if CONFIG_LLA_BENCHMARK
+#if CONFIG_LLA_ENABLE_BLE
+static volatile bool s_bench_ble;
+
+/* keeps the radio busy with back-to-back scans while /bench llm runs */
+static void bench_ble_task(void *arg)
+{
+    (void)arg;
+    while (s_bench_ble) ble_mgr_scan(2000, "");
+    vTaskDelete(NULL);
+}
+#endif
+
 static int c_bench(int argc, char **argv)
 {
     if (argc >= 2 && is(argv[1], "json")) {
@@ -663,18 +675,40 @@ static int c_bench(int argc, char **argv)
     if (argc >= 2 && is(argv[1], "llm")) {
         int n = argc >= 3 ? atoi(argv[2]) : 3;
         if (n < 1 || n > 10) n = 3;
+        bool with_ble = argc >= 4 && is(argv[3], "ble");
+#if CONFIG_LLA_ENABLE_BLE
+        if (with_ble) {
+            s_bench_ble = true;
+            xTaskCreate(bench_ble_task, "bench_ble", 3072, NULL, 3, NULL);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        }
+#else
+        if (with_ble) printf("BLE disabled in this build\n");
+#endif
+        uint32_t sum = 0, mn = UINT32_MAX, mx = 0;
+        int ok = 0;
         for (int i = 0; i < n; i++) {
             if (!agent_service_submit(TOOL_SRC_CONSOLE, "Reply with the single word OK. Do not call tools.")) break;
             while (!agent_service_busy()) vTaskDelay(pdMS_TO_TICKS(20));
             while (agent_service_busy()) vTaskDelay(pdMS_TO_TICKS(50));
+            const agent_run_result_t *r = &agent_service_agent()->last;
+            if (r->final_state != AG_COMPLETED) continue;
+            ok++;
+            sum += r->model_ms;
+            if (r->model_ms < mn) mn = r->model_ms;
+            if (r->model_ms > mx) mx = r->model_ms;
         }
+#if CONFIG_LLA_ENABLE_BLE
+        s_bench_ble = false;
+#endif
         net_status_t ns;
         net_get_status(&ns);
-        printf("bench llm: %d requests; connection reused %u times; last new connection %u ms (max %u ms)\n", n,
-               (unsigned)ns.http_conn_reused, (unsigned)ns.last_connect_ms, (unsigned)ns.max_connect_ms);
+        printf("bench llm%s: %d/%d ok, model time avg %u ms (min %u, max %u); reused %u, last connect %u ms\n",
+               with_ble ? " +ble-scan" : "", ok, n, ok ? (unsigned)(sum / ok) : 0, ok ? (unsigned)mn : 0, (unsigned)mx,
+               (unsigned)ns.http_conn_reused, (unsigned)ns.last_connect_ms);
         return 0;
     }
-    printf("usage: /bench json | /bench llm <n>\n");
+    printf("usage: /bench json | /bench llm <n> [ble]\n");
     return 1;
 }
 #endif

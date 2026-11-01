@@ -71,8 +71,10 @@ On the DevKitC-1, use the **UART** USB-C port: the console runs on UART0
   (Qwen 2.5/3, Llama 3.1+, Gemma 4, Mistral).
 - **Ollama:** set `OLLAMA_HOST=0.0.0.0`; the base URL is `http://<ip>:11434/v1`.
 - **LM Studio:** enable "Serve on local network"; the base URL is `http://<ip>:1234/v1`.
-- **HTTPS with a private CA:** set `/provider url https://…`, then
-  `/provider ca` and paste the CA PEM.
+- **HTTPS with a private CA:** set `/provider url https://…`, then enter the
+  CA one PEM line per command: `/provider ca begin`, then
+  `/provider ca add <line>` for every line, then `/provider ca end`. The PEM
+  is parsed on `end` and rejected if damaged. OTA uses the same CA.
 - **Plain HTTP:** only accepted when the request carries no API key.
 
 ## OTA
