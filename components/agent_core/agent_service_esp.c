@@ -30,6 +30,7 @@ typedef struct {
 
 static agent_t s_agent;
 static QueueHandle_t s_jobs;
+static SemaphoreHandle_t s_submit_mtx;
 static TaskHandle_t s_task;
 static agent_service_env_t s_env;
 static volatile bool s_busy;
@@ -236,8 +237,9 @@ int agent_service_start(tool_registry_t *reg, const agent_service_env_t *env)
     agent_hooks_t h = {.net_ready = hook_net, .on_state = hook_state, .on_tool = hook_tool};
     agent_set_hooks(&s_agent, &h);
     apply_provider();
+    s_submit_mtx = xSemaphoreCreateMutex();
     s_jobs = xQueueCreate(2, sizeof(job_t));
-    if (!s_jobs) return -1;
+    if (!s_jobs || !s_submit_mtx) return -1;
     /* TLS handshakes (mbedTLS) need a deep stack; measured high-water mark is
      * reported by /memory. */
     if (xTaskCreate(agent_task, "agent", CONFIG_LLA_AGENT_STACK, NULL, 4, &s_task) != pdPASS) return -1;
@@ -248,14 +250,18 @@ int agent_service_start(tool_registry_t *reg, const agent_service_env_t *env)
 
 bool agent_service_submit(tool_source_t src, const char *text)
 {
-    static job_t j; /* serialised by the queue copy below; callers are console/event tasks */
-    static SemaphoreHandle_t mtx;
-    if (!mtx) mtx = xSemaphoreCreateMutex();
-    xSemaphoreTake(mtx, portMAX_DELAY);
+    static job_t j; /* serialised by s_submit_mtx; callers are console/event/BLE tasks */
+    /* Event triggers can fire during boot (a rule tripping on the first
+     * sample) before the agent service exists: refuse instead of crashing. */
+    if (!s_jobs || !s_submit_mtx) {
+        ESP_LOGW(TAG, "agent not running; request from %s dropped", tool_source_str(src));
+        return false;
+    }
+    xSemaphoreTake(s_submit_mtx, portMAX_DELAY);
     j.src = src;
     strlcpy(j.text, text, sizeof(j.text));
     bool ok = xQueueSend(s_jobs, &j, 0) == pdTRUE;
-    xSemaphoreGive(mtx);
+    xSemaphoreGive(s_submit_mtx);
     if (!ok) ESP_LOGW(TAG, "agent queue full; request from %s dropped", tool_source_str(src));
     return ok;
 }
