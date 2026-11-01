@@ -1,0 +1,12 @@
+: keep-alive comment
+
+data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"lo ü"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":3}}
+
+data: [DONE]
+

@@ -1,0 +1,1 @@
+{"choices":[{"index":0,"message":{"role":"assistant","content":"<tool_call>\n{\"name\": \"set_actuator\", \"arguments\": {\"device\": \"cooling_fan\", \"value\": 1}}\n</tool_call>"},"finish_reason":"stop"}]}

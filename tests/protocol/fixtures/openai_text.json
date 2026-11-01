@@ -1,0 +1,1 @@
+{"id":"chatcmpl-3","choices":[{"index":0,"message":{"role":"assistant","content":"The temperature is 29.5 °C and the fan is now on."},"finish_reason":"stop"}],"usage":{"prompt_tokens":400,"completion_tokens":15}}

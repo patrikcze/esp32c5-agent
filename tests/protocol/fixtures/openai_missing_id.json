@@ -1,0 +1,1 @@
+{"choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"type":"function","function":{"name":"get_uptime","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}

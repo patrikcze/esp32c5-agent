@@ -1,0 +1,1 @@
+{"id":"chatcmpl-2","choices":[{"index":0,"message":{"role":"assistant","content":"Checking both.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"read_sensor","arguments":"{\"device\":\"room_temp\"}"}},{"id":"call_2","type":"function","function":{"name":"get_free_heap","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}

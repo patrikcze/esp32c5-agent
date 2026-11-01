@@ -1,0 +1,1 @@
+{"id":"msg_02","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"read_sensor","input":{"device":"room_temp"}},{"type":"tool_use","id":"toolu_2","name":"gpio_read","input":{"device":"door_switch"}}],"stop_reason":"tool_use","usage":{"input_tokens":1,"output_tokens":2}}

@@ -1,0 +1,1 @@
+{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"qwen2.5-7b","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_abc123","type":"function","function":{"name":"read_sensor","arguments":"{\"device\":\"room_temp\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":321,"completion_tokens":18,"total_tokens":339}}
