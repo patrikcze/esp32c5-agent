@@ -6,7 +6,7 @@
 cmake -S tests/host -B build-host -G Ninja && cmake --build build-host && ctest --test-dir build-host --output-on-failure
 ```
 
-The suite runs 513 checks across 10 test groups, compiled with
+The suite runs 523 checks across 10 test groups, compiled with
 `-Wall -Wextra -Werror` and AddressSanitizer + UndefinedBehaviorSanitizer.
 The `-DLLA_SANITIZE=OFF` option turns the sanitizers off.
 
