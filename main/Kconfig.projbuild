@@ -1,0 +1,37 @@
+menu "llmagent"
+
+    config LLA_ALLOW_PLAIN_HTTP
+        bool "Allow plain http:// LLM endpoints on the LAN (never with API keys)"
+        default y
+        help
+            Local inference servers (llama-server, Ollama, LM Studio) usually
+            listen on plain HTTP. When enabled, http:// URLs are accepted only
+            for requests that carry no credentials. TLS verification can never
+            be disabled. Turn this off for production.
+
+    config LLA_ENABLE_BLE
+        bool "Enable Bluetooth LE (NimBLE central + peripheral)"
+        default y
+        depends on BT_NIMBLE_ENABLED
+
+    config LLA_AGENT_STACK
+        int "Agent task stack (bytes)"
+        default 12288
+
+    config LLA_AGENT_REQ_BUF
+        int "Request body buffer without PSRAM (bytes)"
+        default 12288
+
+    config LLA_AGENT_RESP_BUF
+        int "Response/SSE line buffer without PSRAM (bytes)"
+        default 8192
+
+    config LLA_AGENT_CONV_BUF
+        int "Conversation context arena without PSRAM (bytes)"
+        default 6144
+
+    config LLA_BENCHMARK
+        bool "Include /bench benchmark commands"
+        default y
+
+endmenu
