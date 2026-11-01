@@ -237,6 +237,7 @@ int ble_mgr_scan(uint32_t ms, const char *prefix)
 {
     if (ms < 500) ms = 500;
     if (ms > 10000) ms = 10000;
+    if (B.conn != BLE_HS_CONN_HANDLE_NONE) return BLE_ERR_BUSY; /* keep the peer's table entry stable */
     if (!begin_op()) return B.synced ? BLE_ERR_BUSY : BLE_ERR_NOT_READY;
     B.n_seen = 0;
     strlcpy(B.filter, prefix ? prefix : "", sizeof(B.filter));
@@ -410,8 +411,12 @@ static int on_write(uint16_t ch, const struct ble_gatt_error *err, struct ble_ga
 int ble_mgr_write(const char *uuid, const uint8_t *d, size_t n, uint32_t timeout_ms)
 {
     if (B.conn == BLE_HS_CONN_HANDLE_NONE) return BLE_ERR_NOT_CONNECTED;
+    /* Authorise against the live link's identity address, never the scan
+     * table, which a rescan may have rewritten since connect. */
     bool rw = false;
-    if (!ble_mgr_allowed(B.seen[B.peer].addr, &rw) || !rw) return BLE_ERR_NOT_WRITABLE;
+    struct ble_gap_conn_desc cd;
+    if (ble_gap_conn_find(B.conn, &cd) != 0 || !ble_mgr_allowed(cd.peer_id_addr.val, &rw) || !rw)
+        return BLE_ERR_NOT_WRITABLE;
     if (!begin_op()) return BLE_ERR_BUSY;
     chr_t *c = find_chr(uuid);
     int rc = BLE_ERR_NOT_FOUND;
@@ -557,6 +562,12 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
         }
         if (ev->connect.status == 0) {
             B.conn = ev->connect.conn_handle;
+            struct ble_gap_conn_desc cd;
+            if (ble_gap_conn_find(B.conn, &cd) != 0 || !ble_mgr_allowed(cd.peer_id_addr.val, NULL)) {
+                ble_gap_terminate(B.conn, BLE_ERR_REM_USER_CONN_TERM); /* identity not allowlisted */
+                op_signal(BLE_ERR_NOT_ALLOWED);
+                return 0;
+            }
             op_signal(0);
         } else {
             op_signal(BLE_ERR_GATT);
