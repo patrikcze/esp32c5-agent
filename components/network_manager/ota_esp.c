@@ -1,6 +1,7 @@
 /*
  * ota_esp.c — HTTPS OTA. The server certificate is verified with the same
- * trust anchors as the LLM transport. With Secure Boot V2 enabled the new
+ * trust anchors as the LLM transport (private CA via /provider ca, else the
+ * x509 bundle). With Secure Boot V2 enabled the new
  * image's signature is verified before it can boot; with
  * CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE the image must be marked valid by
  * app_main after a health check or the bootloader rolls back.
@@ -15,6 +16,8 @@
 
 static const char *TAG = "ota";
 
+const char *net_custom_ca(void);
+
 int net_ota(const char *url)
 {
     if (strncmp(url, "https://", 8) != 0) {
@@ -27,10 +30,12 @@ int net_ota(const char *url)
     }
     esp_http_client_config_t hc = {
         .url = url,
-        .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 15000,
         .keep_alive_enable = true,
     };
+    /* same trust anchors as the LLM transport: private CA if configured */
+    if (net_custom_ca()) hc.cert_pem = net_custom_ca();
+    else hc.crt_bundle_attach = esp_crt_bundle_attach;
     esp_https_ota_config_t oc = {.http_config = &hc};
     ESP_LOGI(TAG, "downloading %s", url);
     esp_err_t e = esp_https_ota(&oc);

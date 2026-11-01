@@ -53,6 +53,8 @@ int net_set_ca_pem(const char *pem)
 
 bool net_has_custom_ca(void) { return s_ca_pem != NULL; }
 
+const char *net_custom_ca(void) { return s_ca_pem; }
+
 static bool origin_of(const char *url, char *out, size_t cap)
 {
     const char *p = strstr(url, "://");

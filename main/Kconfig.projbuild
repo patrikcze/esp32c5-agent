@@ -34,4 +34,11 @@ menu "llmagent"
         bool "Include /bench benchmark commands"
         default y
 
+    config LLA_OTA_TEST_FAIL_HEALTH
+        bool "TEST ONLY: fail the post-OTA health check (verifies rollback)"
+        default n
+        help
+            Builds an image whose health check always fails, so the bootloader
+            must roll back to the previous image. Never ship with this set.
+
 endmenu

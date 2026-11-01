@@ -119,6 +119,10 @@ static void ota_health_check(void)
     net_status_t ns;
     net_get_status(&ns);
     bool ok = ns.state == NET_NO_CREDENTIALS || net_wait_ready(60000, false);
+#if CONFIG_LLA_OTA_TEST_FAIL_HEALTH
+    ESP_LOGW(TAG, "TEST BUILD: forcing health-check failure");
+    ok = false;
+#endif
     if (ok) {
         esp_ota_mark_app_valid_cancel_rollback();
         ESP_LOGI(TAG, "new firmware marked valid");
