@@ -299,6 +299,25 @@ void llm_parse_error_body(llm_parser_t *p, const char *js, size_t n);
 int llm_parse_models(const char *js, size_t n, lla_jtok_t *toks, uint16_t max_toks,
                      void (*cb)(void *u, const char *id), void *u);
 
+/**
+ * Streaming extractor for model listings: emits every "id":"..." value as
+ * bytes arrive, so listings of any size work with a few bytes of state
+ * (Anthropic's /v1/models is larger than the console buffer).
+ */
+typedef struct {
+    void (*cb)(void *u, const char *id);
+    void *u;
+    char win[4];   /* last 4 bytes, to spot the "id" key */
+    uint8_t st;    /* 0 scan, 1 expect ':', 2 expect '"', 3 in value, 4 escape */
+    char id[96];
+    uint8_t n;
+    bool clipped;
+    int count;
+} llm_id_scan_t;
+
+void llm_id_scan_init(llm_id_scan_t *s, void (*cb)(void *u, const char *id), void *u);
+void llm_id_scan_feed(llm_id_scan_t *s, const char *d, size_t n);
+
 /** Build full URL "<base><path>" into out; false if it does not fit. */
 bool llm_join_url(char *out, size_t cap, const char *base, const char *path);
 

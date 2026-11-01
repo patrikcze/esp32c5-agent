@@ -301,8 +301,9 @@ static void model_cb(void *u, const char *id)
 }
 
 typedef struct {
-    char *buf;
-    size_t cap, len;
+    llm_id_scan_t scan;
+    char err[256]; /* start of a non-200 body, for the error message */
+    size_t err_len;
     int status;
 } model_sink_t;
 
@@ -311,9 +312,14 @@ static void ms_header(void *u, const char *k, const char *v) { (void)u; (void)k;
 static int ms_data(void *u, const char *d, size_t n)
 {
     model_sink_t *m = u;
-    if (m->len + n >= m->cap) return 1;
-    memcpy(m->buf + m->len, d, n);
-    m->len += n;
+    if (m->status != 200) {
+        size_t k = n < sizeof(m->err) - 1 - m->err_len ? n : sizeof(m->err) - 1 - m->err_len;
+        memcpy(m->err + m->err_len, d, k);
+        m->err_len += k;
+        m->err[m->err_len] = '\0';
+        return 0;
+    }
+    llm_id_scan_feed(&m->scan, d, n); /* streaming: listing size is unbounded */
     return 0;
 }
 
@@ -328,35 +334,26 @@ static int c_models(int argc, char **argv)
     provider_load(provider_active_kind(), &c);
     const llm_provider_t *p = llm_provider_get(c.kind);
     char url[192], hdr[224];
-    char *body = scratch(6144);
-    lla_jtok_t *toks = scratch(sizeof(lla_jtok_t) * 400);
-    if (!body || !toks || !llm_join_url(url, sizeof(url), c.base_url, p->models_path)) {
-        free(body);
-        free(toks);
-        return 1;
-    }
+    if (!llm_join_url(url, sizeof(url), c.base_url, p->models_path)) return 1;
     llm_http_req_t req = {.method = "GET", .url = url, .timeout_ms = 15000};
     c.stream = false;
     req.n_headers = p->headers(&c, req.headers, LLM_MAX_HEADERS, hdr, sizeof(hdr));
-    model_sink_t ms = {.buf = body, .cap = 6144};
-    llm_http_sink_t sink = {ms_status, ms_header, ms_data, &ms};
+    model_sink_t *ms = scratch(sizeof(model_sink_t));
+    if (!ms) return 1;
+    memset(ms, 0, sizeof(*ms));
+    llm_id_scan_init(&ms->scan, model_cb, NULL);
+    llm_http_sink_t sink = {ms_status, ms_header, ms_data, ms};
     llm_tr_err_t e = net_transport()->perform(net_transport(), &req, &sink);
     memset(hdr, 0, sizeof(hdr));
     memset(&c, 0, sizeof(c));
     int rc = 1;
-    if (e != LLM_TR_OK && e != LLM_TR_ABORTED) {
-        printf("request failed: %s\n", llm_tr_str(e));
-    } else if (ms.status != 200) {
-        body[ms.len < 6143 ? ms.len : 6143] = '\0';
-        printf("HTTP %d: %.200s\n", ms.status, body);
-    } else {
-        int n = llm_parse_models(body, ms.len, toks, 400, model_cb, NULL);
-        printf(n >= 0 ? "%d models%s\n" : "could not parse model list (%d)%s\n", n,
-               e == LLM_TR_ABORTED ? " (list truncated)" : "");
-        rc = n < 0;
+    if (e != LLM_TR_OK) printf("request failed: %s\n", llm_tr_str(e));
+    else if (ms->status != 200) printf("HTTP %d: %.200s\n", ms->status, ms->err);
+    else {
+        printf("%d models\n", ms->scan.count);
+        rc = ms->scan.count == 0;
     }
-    free(body);
-    free(toks);
+    free(ms);
     return rc;
 }
 

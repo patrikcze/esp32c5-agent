@@ -170,6 +170,61 @@ int llm_parse_models(const char *js, size_t n, lla_jtok_t *toks, uint16_t max_to
     return count;
 }
 
+void llm_id_scan_init(llm_id_scan_t *s, void (*cb)(void *u, const char *id), void *u)
+{
+    memset(s, 0, sizeof(*s));
+    s->cb = cb;
+    s->u = u;
+}
+
+static void id_emit(llm_id_scan_t *s)
+{
+    s->id[s->n] = '\0';
+    if (s->clipped && s->n >= 3) memcpy(s->id + s->n - 3, "...", 3);
+    s->cb(s->u, s->id);
+    s->count++;
+    s->n = 0;
+    s->clipped = false;
+}
+
+void llm_id_scan_feed(llm_id_scan_t *s, const char *d, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        char c = d[i];
+        switch (s->st) {
+        case 0:
+            memmove(s->win, s->win + 1, 3);
+            s->win[3] = c;
+            if (memcmp(s->win, "\"id\"", 4) == 0) s->st = 1;
+            break;
+        case 1:
+            if (c == ':') s->st = 2;
+            else if (c != ' ' && c != '\t' && c != '\r' && c != '\n') s->st = 0;
+            break;
+        case 2:
+            if (c == '"') s->st = 3;
+            else if (c != ' ' && c != '\t' && c != '\r' && c != '\n') s->st = 0; /* numeric id etc. */
+            break;
+        case 3:
+            if (c == '"') {
+                id_emit(s);
+                s->st = 0;
+                memset(s->win, 0, sizeof(s->win));
+                break;
+            }
+            if (c == '\\') s->st = 4;
+            if (s->n < sizeof(s->id) - 1) s->id[s->n++] = c;
+            else s->clipped = true;
+            break;
+        case 4: /* character after a backslash: keep it, stay in the value */
+            if (s->n < sizeof(s->id) - 1) s->id[s->n++] = c;
+            else s->clipped = true;
+            s->st = 3;
+            break;
+        }
+    }
+}
+
 /* ------------------------------------------------------------- driver */
 
 void llm_parser_init(llm_parser_t *p, const llm_provider_t *prov, const llm_cfg_t *cfg, llm_response_t *resp,

@@ -237,6 +237,24 @@ static void test_oa_request_stream_usage(void)
     CHECK(strstr(body, "stream_options") == NULL);
 }
 
+static void test_id_scan(void)
+{
+    const char *js = "{\"data\":[{\"type\":\"model\",\"id\":\"claude-haiku-5-5\",\"display_name\":\"Claude Haiku 5.5\"},"
+                     "{\"type\":\"model\", \"id\" : \"claude-opus-5-5\"}],\"has_more\":false,\"first_id\":\"x\"}";
+    int count = 0;
+    llm_id_scan_t s;
+    llm_id_scan_init(&s, count_cb, &count);
+    for (size_t i = 0; i < strlen(js); i++) llm_id_scan_feed(&s, js + i, 1); /* byte by byte */
+    CHECK_EQ_INT(count, 2); /* "first_id" must not match */
+    /* long ids are clipped, not dropped */
+    char big[400];
+    snprintf(big, sizeof(big), "{\"data\":[{\"id\":\"%0200d\"}]}", 7);
+    count = 0;
+    llm_id_scan_init(&s, count_cb, &count);
+    llm_id_scan_feed(&s, big, strlen(big));
+    CHECK_EQ_INT(count, 1);
+}
+
 static void test_url_join(void)
 {
     char u[64];
@@ -261,6 +279,7 @@ void suite_openai(void)
     RUN(test_too_large);
     RUN(test_models_list);
     RUN(test_url_join);
+    RUN(test_id_scan);
     RUN(test_oa_request_stream_usage);
 }
 

@@ -52,7 +52,7 @@ HTTP, with no API key.
 | # | Requirement | Status | Observed on hardware |
 |---|---|---|---|
 | 1 | Connect to Wi-Fi | ✅ | IP 192.168.88.36, RSSI −63…−72; SNTP synced |
-| 2 | Authenticate to an LLM | ✅ | `/models` returned the GGUF id. Anthropic over TLS: cert-bundle validation OK, 401 for the missing key parsed and not retried |
+| 2 | Authenticate to an LLM | ✅ | `/models` returned the GGUF id; Anthropic `/models` lists 13 models via the streaming id scanner. Anthropic over TLS: cert-bundle validation OK, 401 for the missing key parsed and not retried |
 | 3 | Send a text request | ✅ | "Say hello…" COMPLETED in 6.3 s |
 | 4 | Receive a correct response | ✅ | |
 | 5 | Authorized GPIO tool | ✅ | `set_actuator cooling_fan 1`: GPIO23 readback 1, `verified:true` |

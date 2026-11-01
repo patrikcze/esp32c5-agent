@@ -326,7 +326,7 @@ const llm_provider_t llm_provider_anthropic = {
     .caps = {.tools = true, .streaming = true, .parallel_tool_calls = true, .requires_key = true,
              .native_tool_ids = true, .max_context_tokens = 200000},
     .chat_path = "/v1/messages",
-    .models_path = "/v1/models",
+    .models_path = "/v1/models?limit=100",
     .build = an_build,
     .headers = an_headers,
     .on_sse = an_on_sse,
