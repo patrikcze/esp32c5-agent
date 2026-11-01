@@ -55,12 +55,28 @@ Not measured yet: heap during a TLS session. Run `/memory` right after an
 non-streaming. Model inference dominates, so these numbers describe the
 model and the Mac, not the ESP32.
 
+**Measured on the device (LAN llama-server, Gemma 4 E4B on a Mac):**
+
+| Metric | Value |
+|---|---|
+| text-only request, end to end | 6.3 s (model generation dominates) |
+| 5-turn tool workflow (3 tool calls) | 23.0 s total; tool execution 2 ms total |
+| largest request body | 10,496 B (system prompt + 27 tool schemas + history) |
+| TLS connection to api.anthropic.com (cert bundle) | 606 ms |
+| new plain-HTTP connection on the LAN | 75–105 ms |
+| Wi-Fi reconnect after `/wifi drop` | 2,495 ms (1 s backoff + association + DHCP) |
+| internal heap minimum during agent runs | 26,200 B |
+| agent task stack | 8,752–8,896 B free of 12,288 (worst case ~3.5 KB used) |
+| `sys_evt` stack | 788 B free at 2,304 → raised to 3,584 (2,068 B free) |
+
+llama-server closes idle keep-alive connections between turns. The
+transport detects the dead socket before any response byte arrives and
+reconnects once (~75 ms); no agent-level retry is needed.
+
 **Not measured on the device yet:**
 
 | Metric | Command |
 |---|---|
-| request latency, TLS handshake cost, connection reuse | `/bench llm 5`, then `/wifi` (prints `last_connect`, `max_connect`, `reused`) |
-| Wi-Fi reconnection time | `/wifi drop`, then `/wifi` → `last_reconnect` |
 | BLE scan impact on LLM latency | `/bench llm 5` with and without `/ble scan 10` |
 | power consumption | requires an ammeter on the J5 jumper (see the DevKitC-1 user guide) |
 

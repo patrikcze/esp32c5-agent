@@ -408,11 +408,14 @@ static int c_devices(int argc, char **argv)
         int rc = 0;
         if (argc >= 3 && is(argv[2], "load")) {
             printf("paste the profile JSON on ONE line:\n");
-            if (!fgets(js, 4096, stdin)) {
-                free(js);
-                return 1;
-            }
-            size_t n = strcspn(js, "\r\n");
+            size_t n = 0;
+            do { /* skip the line terminator left over from the command itself */
+                if (!fgets(js, 4096, stdin)) {
+                    free(js);
+                    return 1;
+                }
+                n = strcspn(js, "\r\n");
+            } while (n == 0);
             js[n] = '\0';
             char err[128];
             rc = periph_load_profile(js, n, err, sizeof(err));

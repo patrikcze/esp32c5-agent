@@ -210,6 +210,11 @@ static void test_models_list(void)
     int count = 0;
     CHECK_EQ_INT(llm_parse_models(js, strlen(js), s_toks, 512, count_cb, &count), 2);
     CHECK_EQ_INT(count, 2);
+    /* llama-server: {"models":[...],"data":[{"id":"<long gguf path>"}]} */
+    const char *ls = "{\"models\":[{\"name\":\"x\"}],\"object\":\"list\",\"data\":[{\"id\":\"/Users/someone/.lmstudio/models/"
+                     "lmstudio-community/gemma-4-E4B-it-GGUF/gemma-4-E4B-it-Q4_K_M.gguf\"}]}";
+    count = 0;
+    CHECK_EQ_INT(llm_parse_models(ls, strlen(ls), s_toks, 512, count_cb, &count), 1);
 }
 
 static void test_url_join(void)

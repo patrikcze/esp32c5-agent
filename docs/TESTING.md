@@ -43,30 +43,38 @@ performs no actuation. It is protocol validation, not hardware validation.
 See [tests/hardware/CHECKLIST.md](../tests/hardware/CHECKLIST.md). Record the date, firmware
 commit, and result of each item.
 
-## Verification status and gaps (2026-11-01)
+## Verification status and gaps (updated 2026-11-01, on-device run)
 
-| # | Requirement | Status |
-|---|---|---|
-| 1 | Connect to Wi-Fi | ⏳ not run: no credentials provided yet |
-| 2 | Authenticate to an LLM | ⏳ device side not run; host live test PASS (llama-server) |
-| 3 | Send a text request | ⏳ device; ✅ host live |
-| 4 | Receive a correct response | ⏳ device; ✅ host live |
-| 5 | Authorized GPIO tool | ⏳ device via LLM. Tool path verified with the mock HAL; GPIO init verified on hardware (boot log) |
-| 6 | Read sensor data | ✅ hardware: `chip_temp` read by the sampler (`/devices` shows a live value) |
-| 7 | Return sensor data to the model | ✅ host live (mock sensor) |
-| 8 | Multi-step tool workflow | ✅ host live; ⏳ device |
-| 9 | Scan BLE devices | ✅ hardware |
-| 10 | Read a BLE characteristic | ⏳ needs an allowlisted BLE sensor (e.g. ESS 0x2A6E) |
-| 11 | Recover after Wi-Fi drop | ⏳ needs Wi-Fi (`/wifi drop`) |
-| 12 | Reject an unauthorized tool call | ✅ host (unit + live: autonomous actuation refused) |
-| 13 | Recover from a malformed response | ✅ host (unit) |
-| 14 | Deterministic automation without the LLM | ✅ host (unit); on hardware the rule runs in the `events` task with no network configured. A live trip needs chip temperature > 60 °C or a lower threshold in a test profile (checklist) |
+Setup: DevKitC-1 on Wi-Fi "SweetHome" (2.4 GHz, ch 3). llama-server 0.8.0
+(`--jinja`, Gemma 4 E4B Q4_K_M) ran on a Mac on the same LAN over plain
+HTTP, with no API key.
 
-Not verified at all:
+| # | Requirement | Status | Observed on hardware |
+|---|---|---|---|
+| 1 | Connect to Wi-Fi | ✅ | IP 192.168.88.36, RSSI −63…−72; SNTP synced |
+| 2 | Authenticate to an LLM | ✅ | `/models` returned the GGUF id. Anthropic over TLS: cert-bundle validation OK, 401 for the missing key parsed and not retried |
+| 3 | Send a text request | ✅ | "Say hello…" COMPLETED in 6.3 s |
+| 4 | Receive a correct response | ✅ | |
+| 5 | Authorized GPIO tool | ✅ | `set_actuator cooling_fan 1`: GPIO23 readback 1, `verified:true` |
+| 6 | Read sensor data | ✅ | `read_sensor chip_temp` → 32.6 °C |
+| 7 | Return sensor data to the model | ✅ | the model's answer quoted 32.6 °C |
+| 8 | Multi-step tool workflow | ✅ | capabilities → read → decide → actuate → answer; 5 turns, 23 s |
+| 9 | Scan BLE devices | ✅ | 16 devices in a 3–4 s scan |
+| 10 | Read a BLE characteristic | ⏳ | needs an allowlisted ESS sensor |
+| 11 | Recover after a Wi-Fi drop | ✅ | `/wifi drop` → reconnected in 2495 ms; the next request OK |
+| 12 | Reject an unauthorized call | ✅ | `/policy console read`: the actuator tool is not offered and the fan is untouched (also a host unit test) |
+| 13 | Recover from a malformed response | ✅ | test server sent a truncated `set_actuator` call; 4 attempts rejected, ERROR, fan unchanged |
+| 14 | Deterministic automation while the LLM is unavailable | ✅ | provider unreachable (port 9): rule `chip_temp > 20` switched the fan on and set LOCKED; the agent's retries failed gracefully |
 
-- Anthropic against the real API (no key)
-- Ollama, LM Studio, vLLM, OpenAI live
-- BLE peripheral pairing from a phone
-- OTA and rollback on hardware
-- the secure-boot / flash-encryption build on hardware (irreversible; not done on this board)
-- power measurement
+Still open:
+
+- **BLE:** characteristic read (item 10) and peripheral pairing.
+- **Safety lock vs. the agent on hardware.** The agent's "switch off"
+  request while the rule lock is active was queued but not observed: the
+  board reset when the port reopened. Covered by a host unit test.
+- **Other servers and providers:** Anthropic with a real key; Ollama, LM
+  Studio, vLLM, OpenAI.
+- **OTA and rollback** on hardware.
+- **Secure build** on hardware: irreversible, so not done.
+- **Power measurement.**
+- **BLE scan impact** on LLM latency.

@@ -160,11 +160,11 @@ int llm_parse_models(const char *js, size_t n, lla_jtok_t *toks, uint16_t max_to
         int it = lla_json_arr_get(toks, data, i);
         int id = lla_json_obj_get(js, toks, it, "id");
         if (id < 0) id = lla_json_obj_get(js, toks, it, "name");
-        char buf[96];
-        if (id >= 0 && lla_json_str(js, &toks[id], buf, sizeof(buf)) >= 0) {
-            cb(u, buf);
-            count++;
-        }
+        char buf[192]; /* llama-server reports the full GGUF path as the id */
+        if (id < 0) continue;
+        if (lla_json_str(js, &toks[id], buf, sizeof(buf)) < 0) snprintf(buf, sizeof(buf), "(id longer than %u bytes)", (unsigned)sizeof(buf) - 1);
+        cb(u, buf);
+        count++;
     }
     return count;
 }

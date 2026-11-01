@@ -32,6 +32,7 @@ static esp_http_client_handle_t s_cli;
 static char s_origin[96];     /* scheme://host:port of s_cli */
 static char *s_ca_pem;        /* heap copy of private CA, NULL = bundle */
 static const llm_http_sink_t *s_sink;
+#define LLM_TR_STALE ((llm_tr_err_t)100) /* internal: reused socket dead before response */
 static char s_rx[1024];
 
 int net_set_ca_pem(const char *pem)
@@ -105,6 +106,14 @@ static llm_tr_err_t perform(llm_transport_t *t, const llm_http_req_t *req, const
     if (!mtx) mtx = xSemaphoreCreateMutex();
     if (xSemaphoreTake(mtx, pdMS_TO_TICKS(req->timeout_ms)) != pdTRUE) return LLM_TR_TIMEOUT;
     llm_tr_err_t r = perform_locked(req, sink);
+    if (r == LLM_TR_STALE) {
+        /* A kept-alive connection was closed by the server while idle. The
+         * request did not reach it (failed before any response byte), so
+         * one immediate retry on a fresh connection is safe. */
+        ESP_LOGI(TAG, "reused connection was closed by the server; reconnecting");
+        r = perform_locked(req, sink);
+        if (r == LLM_TR_STALE) r = LLM_TR_IO;
+    }
     xSemaphoreGive(mtx);
     return r;
 }
@@ -137,6 +146,7 @@ static llm_tr_err_t perform_locked(const llm_http_req_t *req, const llm_http_sin
     if (s_cli && strcmp(origin, s_origin) != 0) drop_client();
     net_status_t *st = net_stats_mut();
     st->http_requests++;
+    bool reused = s_cli != NULL;
     if (!s_cli) {
         esp_http_client_config_t c = {
             .url = req->url,
@@ -167,6 +177,11 @@ static llm_tr_err_t perform_locked(const llm_http_req_t *req, const llm_http_sin
     int64_t t0 = esp_timer_get_time();
     esp_err_t e = esp_http_client_open(s_cli, (int)req->body_len);
     uint32_t open_ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);
+    if (e != ESP_OK && reused) {
+        drop_client();
+        s_sink = NULL;
+        return LLM_TR_STALE;
+    }
     if (e != ESP_OK) {
         llm_tr_err_t r = classify_open_error(e);
         ESP_LOGW(TAG, "open failed: %s", esp_err_to_name(e));
@@ -191,14 +206,15 @@ static llm_tr_err_t perform_locked(const llm_http_req_t *req, const llm_http_sin
         if (w <= 0) {
             drop_client();
             s_sink = NULL;
-            return LLM_TR_IO;
+            return reused ? LLM_TR_STALE : LLM_TR_IO;
         }
         sent += (size_t)w;
     }
     int64_t cl = esp_http_client_fetch_headers(s_cli);
-    if (cl < 0) {
+    if (cl < 0 || (reused && esp_http_client_get_status_code(s_cli) <= 0)) {
         drop_client();
         s_sink = NULL;
+        if (reused && cl != -ESP_ERR_HTTP_EAGAIN) return LLM_TR_STALE; /* closed before any response */
         return cl == -ESP_ERR_HTTP_EAGAIN ? LLM_TR_TIMEOUT : LLM_TR_IO;
     }
     int status = esp_http_client_get_status_code(s_cli);
