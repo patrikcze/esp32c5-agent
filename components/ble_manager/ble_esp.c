@@ -74,6 +74,17 @@ static struct {
     /* peripheral */
     uint16_t periph_conn;
     uint32_t scans, notifies;
+    /* central auto-reconnect: after an unexpected link loss to the device the
+     * user connected, reconnect with bounded backoff and restore
+     * notification subscriptions. A user disconnect ends it. */
+    bool want_link;
+    ble_addr_t peer_addr;
+    uint8_t rc_attempt;
+    esp_timer_handle_t rc_timer;
+    uint16_t sub_cccd[8];
+    uint8_t sub_val[8];
+    uint8_t n_sub;
+    uint32_t reconnects;
 } B = {.conn = BLE_HS_CONN_HANDLE_NONE, .periph_conn = BLE_HS_CONN_HANDLE_NONE, .peer = -1};
 
 const char *ble_err_str(int e)
@@ -323,9 +334,54 @@ int ble_mgr_connect(int idx, uint32_t timeout_ms)
     return rc;
 }
 
+#define RC_MAX_ATTEMPTS 6
+#define RC_MAX_DELAY_MS 30000
+
+static void rc_schedule(void)
+{
+    if (!B.want_link || B.rc_attempt >= RC_MAX_ATTEMPTS) {
+        if (B.want_link) ESP_LOGW(TAG, "auto-reconnect gave up after %d attempts", RC_MAX_ATTEMPTS);
+        B.want_link = false;
+        B.n_svcs = B.n_chrs = 0;
+        B.n_sub = 0;
+        return;
+    }
+    uint32_t d = 1000u << B.rc_attempt;
+    if (d > RC_MAX_DELAY_MS) d = RC_MAX_DELAY_MS;
+    B.rc_attempt++;
+    esp_timer_stop(B.rc_timer);
+    esp_timer_start_once(B.rc_timer, (uint64_t)d * 1000);
+    ESP_LOGI(TAG, "auto-reconnect attempt %u in %u ms", B.rc_attempt, (unsigned)d);
+}
+
+static void rc_timer_cb(void *arg)
+{
+    (void)arg;
+    if (!B.want_link || !B.synced || B.conn != BLE_HS_CONN_HANDLE_NONE) return;
+    int rc = ble_gap_connect(B.own_addr_type, &B.peer_addr, 5000, NULL, gap_event, (void *)2);
+    if (rc != 0) {
+        /* busy (e.g. a scan is running): try again later, same attempt budget */
+        rc_schedule();
+    }
+}
+
+static void rc_restore(void)
+{
+    for (uint8_t i = 0; i < B.n_sub; i++) {
+        uint8_t v[2] = {B.sub_val[i], 0};
+        ble_gattc_write_flat(B.conn, B.sub_cccd[i], v, 2, NULL, NULL);
+    }
+}
+
 int ble_mgr_disconnect(void)
 {
-    if (B.conn == BLE_HS_CONN_HANDLE_NONE) return BLE_ERR_NOT_CONNECTED;
+    B.want_link = false; /* user-initiated: never auto-reconnect */
+    esp_timer_stop(B.rc_timer);
+    B.n_sub = 0;
+    if (B.conn == BLE_HS_CONN_HANDLE_NONE) {
+        B.n_svcs = B.n_chrs = 0;
+        return BLE_ERR_NOT_CONNECTED;
+    }
     if (!begin_op()) return BLE_ERR_BUSY;
     int rc = ble_gap_terminate(B.conn, BLE_ERR_REM_USER_CONN_TERM);
     if (rc == 0) rc = wait_done(3000);
@@ -444,6 +500,14 @@ int ble_mgr_subscribe(const char *uuid, uint32_t timeout_ms)
         if (rc == 0 && c->cccd) {
             uint8_t v[2] = {(c->props & BLE_GATT_CHR_PROP_NOTIFY) ? 1 : 2, 0};
             rc = ble_gattc_write_flat(B.conn, c->cccd, v, 2, on_write, NULL) ? BLE_ERR_GATT : wait_done(timeout_ms);
+            if (rc == 0) {
+                bool known = false;
+                for (uint8_t i = 0; i < B.n_sub; i++) known |= B.sub_cccd[i] == c->cccd;
+                if (!known && B.n_sub < 8) {
+                    B.sub_cccd[B.n_sub] = c->cccd;
+                    B.sub_val[B.n_sub++] = v[0];
+                }
+            }
         } else if (rc == 0) {
             rc = BLE_ERR_NOT_FOUND;
         }
@@ -560,15 +624,30 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
             }
             return 0;
         }
+        bool auto_rc = arg == (void *)2;
         if (ev->connect.status == 0) {
             B.conn = ev->connect.conn_handle;
             struct ble_gap_conn_desc cd;
             if (ble_gap_conn_find(B.conn, &cd) != 0 || !ble_mgr_allowed(cd.peer_id_addr.val, NULL)) {
+                B.want_link = false;
                 ble_gap_terminate(B.conn, BLE_ERR_REM_USER_CONN_TERM); /* identity not allowlisted */
-                op_signal(BLE_ERR_NOT_ALLOWED);
+                if (!auto_rc) op_signal(BLE_ERR_NOT_ALLOWED);
                 return 0;
             }
+            if (auto_rc) {
+                B.reconnects++;
+                B.rc_attempt = 0;
+                ESP_LOGI(TAG, "central link restored; re-enabling %u subscription(s)", B.n_sub);
+                rc_restore();
+                return 0;
+            }
+            B.peer_addr = cd.peer_ota_addr;
+            B.want_link = true;
+            B.rc_attempt = 0;
+            B.n_sub = 0;
             op_signal(0);
+        } else if (auto_rc) {
+            rc_schedule();
         } else {
             op_signal(BLE_ERR_GATT);
         }
@@ -579,8 +658,14 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
             advertise();
         } else if (ev->disconnect.conn.conn_handle == B.conn) {
             B.conn = BLE_HS_CONN_HANDLE_NONE;
-            B.n_svcs = B.n_chrs = 0;
             ESP_LOGI(TAG, "central link closed (reason 0x%x)", ev->disconnect.reason);
+            if (B.want_link) {
+                /* unexpected loss: keep the GATT table (same device, same
+                 * handles) and reconnect in the background */
+                rc_schedule();
+            } else {
+                B.n_svcs = B.n_chrs = 0;
+            }
             op_signal(0);
         }
         return 0;
@@ -648,6 +733,8 @@ int ble_mgr_init(void)
     B.op = xSemaphoreCreateMutex();
     B.done = xSemaphoreCreateBinary();
     if (!B.op || !B.done) return -1;
+    esp_timer_create_args_t ta = {.callback = rc_timer_cb, .name = "ble_rc"};
+    if (esp_timer_create(&ta, &B.rc_timer) != ESP_OK) return -1;
     allow_load();
     if (nimble_port_init() != ESP_OK) return -1;
     ble_hs_cfg.sync_cb = on_sync;
@@ -679,6 +766,9 @@ void ble_mgr_print_status(void)
     printf("ble         : %s, %d seen, %d allowlisted, central link %s (%d svcs, %d chrs), peripheral %s, %u notifications\n",
            B.synced ? "ready" : "not ready", B.n_seen, B.n_allow, a, B.n_svcs, B.n_chrs,
            B.periph_conn != BLE_HS_CONN_HANDLE_NONE ? "connected" : "advertising", (unsigned)B.notifies);
+    printf("              auto-reconnect %s, %u reconnects, %u subscriptions remembered\n",
+           B.want_link ? (B.conn == BLE_HS_CONN_HANDLE_NONE ? "PENDING" : "armed") : "off", (unsigned)B.reconnects,
+           B.n_sub);
 }
 
 /* used by console listing */
