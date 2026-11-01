@@ -1,0 +1,18 @@
+# ESP-IDF / CMake build output
+build/
+build-*/
+sdkconfig
+sdkconfig.old
+managed_components/
+dependencies.lock
+
+# secrets / keys — never commit
+*.pem
+!tests/**/*.pem
+secure_boot_signing_key*
+*.key
+.env
+
+# editor / OS
+.vscode/
+.DS_Store
