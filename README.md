@@ -26,7 +26,7 @@ The temperature is 29.5 °C, above 28 °C; the cooling fan is now on.
 | Agent state machine, both protocols, failure handling | ✅ host | 539 checks under ASan/UBSan |
 | Wi-Fi, TLS, LLM tool workflow **from the device** (fan via GPIO readback) | ✅ hardware | 13 of 14 checklist items pass on the board, see docs/TESTING.md |
 | Safety-rule lock vs agent, OTA + rollback, BLE coexistence latency | ✅ hardware | docs/TESTING.md, docs/PERFORMANCE.md |
-| Anthropic against the live API | ✅ host | `live_agent` with a real key: tool workflow PASS, autonomous actuation rejected by policy |
+| Anthropic against the live API | ✅ host + hardware | tool workflow with GPIO readback from the board (~3 s); host run also showed autonomous actuation rejected by policy |
 | BLE connect/read on a real sensor, peripheral pairing | ⏳ needs a BLE sensor / phone | checklist items 9–10 |
 
 [docs/TESTING.md](docs/TESTING.md) lists every remaining verification gap.

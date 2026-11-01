@@ -77,6 +77,7 @@ reconnects once (~75 ms); no agent-level retry is needed.
 | same, BLE scanning continuously (`/bench llm 5 ble`) | 380 ms avg (358–399), +5 % |
 | internal heap minimum with Wi-Fi + HTTP + continuous BLE scan | 18,840 B |
 | OTA download + write (1.69 MB, HTTPS, private CA) | 12.9 s |
+| Anthropic `claude-haiku-5-5`, 3-turn tool workflow, from the board over TLS | 3.1–3.5 s |
 
 **Not measured on the device yet:**
 

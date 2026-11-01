@@ -80,7 +80,7 @@ Additional hardware results (second session):
 Still open:
 
 - **BLE:** characteristic read on a real sensor (item 10) and peripheral pairing from a phone.
-- **Other servers and providers:** Ollama, LM Studio, vLLM, OpenAI. Anthropic passes from the host (`live_agent`, real key) but has not yet been run from the device itself.
+- **Other servers and providers:** Ollama, LM Studio, vLLM, OpenAI. Anthropic passes from the host (`live_agent`) and **from the device**: TLS cert-bundle validated, `read_sensor chip_temp` → 31.6 °C, `gpio_write cooling_fan 1` with readback verified, about 3.1–3.5 s for 3 model turns, usage reported (755/221 and 1640/241 tokens).
 
 Anthropic live finding: in the autonomous run the model called `set_actuator`
 although the tool was not advertised to that source (it remembered the tool
