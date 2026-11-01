@@ -1,0 +1,1 @@
+{"board":"esp32c5-devkitc-1","devices":[{"name":"status_led","type":"rgb","pin":27,"llm_write":true,"max":25},{"name":"desk_led","type":"gpio_out","pin":23,"safe":0,"llm_write":true,"min_toggle_ms":250}]}

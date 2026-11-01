@@ -1,0 +1,44 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+      - name: Build and test (ASan/UBSan)
+        run: |
+          cmake -S tests/host -B build-host -G Ninja
+          cmake --build build-host
+          ctest --test-dir build-host --output-on-failure
+
+  firmware:
+    runs-on: ubuntu-24.04
+    container: espressif/idf:v5.5.6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build release firmware
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          idf.py set-target esp32c5
+          idf.py build
+          idf.py size
+      - name: Build without BLE
+        shell: bash
+        run: |
+          . $IDF_PATH/export.sh
+          printf 'CONFIG_BT_ENABLED=n\n' > /tmp/noble
+          idf.py -B build-noble -D SDKCONFIG=build-noble/sdkconfig -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;/tmp/noble" set-target esp32c5 build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: llmagent-esp32c5
+          path: |
+            build/llmagent.bin
+            build/bootloader/bootloader.bin
+            build/partition_table/partition-table.bin
+            build/flash_args

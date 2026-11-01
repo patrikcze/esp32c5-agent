@@ -1,0 +1,1 @@
+{"board":"esp32c5-devkitc-1","devices":[{"name":"status_led","type":"rgb","pin":27,"llm_write":true,"max":20},{"name":"chip_temp","type":"chip_temp"}],"triggers":[{"on":"ble_seen","min_interval_s":300,"prompt":"A new BLE device was seen. List authorized BLE devices and report briefly."}]}

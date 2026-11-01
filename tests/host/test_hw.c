@@ -720,12 +720,12 @@ static void test_conv(void)
     CHECK_EQ_INT(c.len, 0);
 }
 
-static void test_default_profile_loads(void)
+static void check_profile_file(const char *path)
 {
     hal_set(&k_mock_hal);
     periph_init(&board_esp32c5_devkitc1);
     size_t n;
-    char *js = test_read_file("../../../main/default_profile.json", &n);
+    char *js = test_read_file(path, &n);
     char err[128] = "";
     CHECK_EQ_INT(periph_load_profile(js, n, err, sizeof(err)), PER_OK);
     CHECK_STR(err, "");
@@ -737,7 +737,18 @@ static void test_default_profile_loads(void)
     CHECK_EQ_INT(rules_parse(&rs, js, t, lla_json_obj_get(js, t, 0, "rules"), err, sizeof(err)), 0);
     triggers_t ts;
     CHECK_EQ_INT(triggers_parse(&ts, js, t, lla_json_obj_get(js, t, 0, "triggers"), periph_find, err, sizeof(err)), 0);
+    if (err[0]) fprintf(stderr, "    %s: %s\n", path, err);
     free(js);
+}
+
+/* The shipped default and every example profile must validate. */
+static void test_default_profile_loads(void)
+{
+    check_profile_file("../../../main/default_profile.json");
+    check_profile_file("../../../examples/led_agent/profile.json");
+    check_profile_file("../../../examples/temperature_agent/profile.json");
+    check_profile_file("../../../examples/ble_sensor_agent/profile.json");
+    check_profile_file("../../../examples/autonomous_controller/profile.json");
 }
 
 void suite_periph(void)

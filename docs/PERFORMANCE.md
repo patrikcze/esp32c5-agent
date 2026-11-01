@@ -1,0 +1,71 @@
+# Performance
+
+Every number here was measured. Rows marked "not measured" list the command
+that will produce the figure.
+
+Measurement setup: ESP32-C5-DevKitC-1, chip rev v1.0, 8 MB flash, 4 MB PSRAM,
+ESP-IDF v5.5.6, default `sdkconfig.defaults` (`-Os`, log level INFO),
+2026-11-01.
+
+## Image and static memory (`idf.py size`)
+
+| Metric | Value |
+|---|---|
+| app image | 1,692,362 B (OTA slot 1,966,080 B → 14 % free) |
+| flash `.text` + `.rodata` | 1,543,718 B |
+| HP SRAM used (static, incl. IRAM code) | 199,540 B of 320,928 (62 %) |
+| `.bss` / `.data` | 50,632 B / 21,040 B |
+| app image without BLE (`CONFIG_BT_ENABLED=n`) | 1,280,720 B (35 % slot free) |
+| llmagent's own components (flash, approx.) | ~145 KB; the rest is Wi-Fi, BLE controller, mbedTLS, lwIP |
+
+Before buffers were moved to on-demand and PSRAM allocation, `.bss` was
+89,672 B and HP SRAM use was 238,358 B.
+
+## Heap (serial log and `/memory`)
+
+| Point | Internal free | Largest block | Min ever |
+|---|---|---|---|
+| after profile and tool registration (pre-Wi-Fi) | 177,595 B | 106,496 B | — |
+| after Wi-Fi + BLE + agent start, idle | 88,959 B | 47,104 B | 33,620 B |
+| same, first build (before PSRAM placement) | 38,691 B | 15,360 B | 18,940 B |
+| PSRAM free, idle | 4,102,500 B | 4,063,232 B | — |
+
+Not measured yet: heap during a TLS session. Run `/memory` right after an
+`/ask` that used HTTPS.
+
+## Task stacks (`/memory`, free bytes at the high-water mark, idle and after BLE scans)
+
+| Task | Size | Free at HWM |
+|---|---|---|
+| events | 4096 | 1,988 |
+| console_repl | 6144 | 3,908 |
+| agent | 12288 | 11,808 (no TLS run yet; re-measure) |
+| nimble_host | IDF | 1,960 |
+
+## Parser
+
+| Benchmark | Result |
+|---|---|
+| `/bench json`, 253-byte tool-call response, 31 tokens | 31.6 µs per parse (8.0 MB/s); token array 310 B; zero heap |
+
+## Agent latency
+
+**Measured from the host (Mac, llama-server, Gemma 4 E4B Q4_K_M):** the
+3-turn temperature-and-fan workflow took 9.6 s streaming and 14.6 s
+non-streaming. Model inference dominates, so these numbers describe the
+model and the Mac, not the ESP32.
+
+**Not measured on the device yet:**
+
+| Metric | Command |
+|---|---|
+| request latency, TLS handshake cost, connection reuse | `/bench llm 5`, then `/wifi` (prints `last_connect`, `max_connect`, `reused`) |
+| Wi-Fi reconnection time | `/wifi drop`, then `/wifi` → `last_reconnect` |
+| BLE scan impact on LLM latency | `/bench llm 5` with and without `/ble scan 10` |
+| power consumption | requires an ammeter on the J5 jumper (see the DevKitC-1 user guide) |
+
+## BLE
+
+| Metric | Value |
+|---|---|
+| scan 3000 ms | returned in 3002 ms wall time; 16 devices (table limit) |
