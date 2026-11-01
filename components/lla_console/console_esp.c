@@ -61,7 +61,7 @@ static int c_help(int argc, char **argv)
            "  /ask <text>                       send a request to the agent\n"
            "  /agent [status|cancel|clear|system <prompt>|budget <turns> <calls> <secs>]\n"
            "  /status                           overall status\n"
-           "  /wifi [set <ssid> <pass>|scan|drop]\n"
+           "  /wifi [set <ssid> <pass>|scan|drop|prov [stop|info]]  (prov: phone-app provisioning)\n"
            "  /provider [show|use openai|anthropic|url <u>|model <m>|key <k>|stream on|off|\n"
            "             maxtok <n>|compat on|off|ca begin|add|end|clear]\n"
            "  /models                           list models from the active provider\n"
@@ -131,6 +131,18 @@ static int c_wifi(int argc, char **argv)
     }
     if (argc >= 2 && is(argv[1], "scan")) {
         printf("%d networks\n", net_scan_print());
+        return 0;
+    }
+    if (argc >= 2 && is(argv[1], "prov")) {
+        if (argc >= 3 && is(argv[2], "stop")) {
+            net_prov_stop();
+            printf("stopping provisioning\n");
+        } else if (argc >= 3 && is(argv[2], "info")) {
+            net_prov_print_info();
+        } else if (net_prov_start() != 0) {
+            printf("could not start provisioning\n");
+            return 1;
+        }
         return 0;
     }
     if (argc >= 2 && is(argv[1], "drop")) {

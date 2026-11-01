@@ -14,6 +14,10 @@ menu "llmagent"
         default y
         depends on BT_NIMBLE_ENABLED
 
+    config LLA_WIFI_PROV
+        bool "Wi-Fi provisioning over SoftAP (Espressif provisioning app, ~95 KB flash)"
+        default y
+
     config LLA_AGENT_STACK
         int "Agent task stack (bytes)"
         default 12288

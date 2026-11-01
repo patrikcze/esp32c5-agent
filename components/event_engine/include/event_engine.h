@@ -168,6 +168,8 @@ void event_engine_describe(lla_jw_t *w);
 rules_t *event_engine_rules(void);
 void event_engine_stats(uint32_t *dropped, uint32_t *deduped, uint32_t *samples);
 int event_engine_watch(int dev_idx, bool enable);
+/** Called once when the board's BOOT button (a gpio_in device on the boot pin) is held >= 5 s. */
+void event_engine_set_long_press_cb(void (*cb)(void));
 /** Pending agent-proposed rule awaiting local approval. */
 bool event_engine_propose_rule(const rule_t *r);
 bool event_engine_pending_rule(rule_t *out);

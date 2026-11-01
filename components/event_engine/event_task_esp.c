@@ -42,7 +42,38 @@ static struct {
     rule_t pending;
     bool has_pending;
     TaskHandle_t task;
+    void (*long_press_cb)(void);
+    uint64_t boot_down_since;
+    bool boot_fired;
 } E;
+
+void event_engine_set_long_press_cb(void (*cb)(void)) { E.long_press_cb = cb; }
+
+#define LONG_PRESS_MS 5000
+
+/* BOOT long press: a local, physical gesture (e.g. start Wi-Fi provisioning). */
+static void check_long_press(uint64_t now)
+{
+    const board_t *b = periph_board();
+    if (!E.long_press_cb || !b || b->boot_btn_pin < 0) return;
+    for (int i = 0; i < periph_count(); i++) {
+        const periph_dev_t *d = periph_get(i);
+        if (d->cfg.type != DEV_GPIO_IN || d->cfg.pin != b->boot_btn_pin) continue;
+        float v;
+        if (periph_read(i, &v, NULL) != PER_OK) return;
+        if (v == 0) {
+            E.boot_down_since = 0;
+            E.boot_fired = false;
+        } else if (!E.boot_down_since) {
+            E.boot_down_since = now;
+        } else if (!E.boot_fired && now - E.boot_down_since >= LONG_PRESS_MS) {
+            E.boot_fired = true;
+            ESP_LOGI(TAG, "BOOT held for %d s", LONG_PRESS_MS / 1000);
+            E.long_press_cb();
+        }
+        return;
+    }
+}
 
 /* ------------------------------------------------------------ rule env */
 
@@ -308,6 +339,7 @@ static void event_task(void *arg)
                 }
             }
         }
+        check_long_press(now);
         if (now >= next_second) {
             next_second = now + 1000;
             rules_tick(&E.rules, now);

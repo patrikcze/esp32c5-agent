@@ -76,6 +76,12 @@ static void net_event(bool up)
 
 static bool net_ready(uint32_t wait_ms) { return net_wait_ready(wait_ms, false); }
 
+static void boot_long_press(void)
+{
+    ESP_LOGI(TAG, "BOOT long press: starting Wi-Fi provisioning");
+    net_prov_start();
+}
+
 static void agent_submit_from_event(const char *prompt, const event_t *e)
 {
     (void)e;
@@ -175,6 +181,14 @@ void app_main(void)
     if (agent_service_start(&s_reg, &env) != 0) ESP_LOGE(TAG, "agent service failed to start");
     console_env_t cenv = {.default_profile = default_profile_start};
     console_start(&s_reg, &cenv);
+
+    event_engine_set_long_press_cb(boot_long_press);
+    net_status_t ns;
+    net_get_status(&ns);
+    if (ns.state == NET_NO_CREDENTIALS) {
+        ESP_LOGI(TAG, "no Wi-Fi credentials: starting provisioning (or use /wifi set)");
+        net_prov_start();
+    }
 
     ota_health_check();
     ESP_LOGI(TAG, "ready: heap internal free %u, min %u", (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),

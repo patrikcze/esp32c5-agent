@@ -34,6 +34,13 @@ static net_event_cb_t s_cb;
 static uint64_t s_down_since_us;
 static uint32_t s_backoff = BACKOFF_MIN_MS;
 static bool s_inited;
+static volatile bool s_prov; /* provisioning manager owns connection attempts */
+
+void net_internal_set_prov(bool active)
+{
+    s_prov = active;
+    if (active) esp_timer_stop(s_retry_timer);
+}
 
 const char *net_state_str(net_state_t s)
 {
@@ -72,7 +79,7 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        if (s_st.ssid[0]) {
+        if (s_st.ssid[0] && !s_prov) {
             s_st.state = NET_CONNECTING;
             esp_wifi_connect();
         }
@@ -86,6 +93,10 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
             s_st.disconnects++;
             s_down_since_us = esp_timer_get_time();
             if (s_cb) s_cb(false);
+        }
+        if (s_prov) {
+            s_st.state = NET_CONNECTING; /* provisioning manager owns the link */
+            return;
         }
         if (s_st.state == NET_STOPPED || !s_st.ssid[0]) return;
         ESP_LOGW(TAG, "disconnected (reason %d), retry in ~%u ms", d->reason, (unsigned)s_backoff);
@@ -159,6 +170,18 @@ int net_init(net_event_cb_t cb)
     s_inited = true;
     if (!s_st.ssid[0]) ESP_LOGW(TAG, "no Wi-Fi credentials: use /wifi set <ssid> <password>");
     return 0;
+}
+
+/* used by provisioning: persist and connect without the extra validation */
+int net_internal_apply_credentials(const char *ssid, const char *pass)
+{
+    if (cfg_set_str(CFG_NS, "wifi_ssid", ssid) < 0 || cfg_set_str(CFG_NS_SECRET, "wifi_pass", pass) < 0) return -2;
+    strlcpy(s_st.ssid, ssid, sizeof(s_st.ssid));
+    esp_timer_stop(s_retry_timer);
+    s_backoff = BACKOFF_MIN_MS;
+    if (apply_config(ssid, pass) != ESP_OK) return -3;
+    s_st.state = NET_CONNECTING;
+    return esp_wifi_connect() == ESP_OK ? 0 : -3;
 }
 
 int net_set_credentials(const char *ssid, const char *pass)

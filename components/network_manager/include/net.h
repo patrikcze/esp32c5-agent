@@ -57,6 +57,12 @@ bool net_has_custom_ca(void);
 /** The active private CA (sanitised PEM) or NULL. */
 const char *net_custom_ca(void);
 
+/** Headless provisioning (SoftAP + PoP, Espressif provisioning app). */
+int net_prov_start(void);
+void net_prov_stop(void);
+bool net_prov_active(void);
+void net_prov_print_info(void);
+
 /** OTA from an https URL; reboots on success. */
 int net_ota(const char *url);
 
