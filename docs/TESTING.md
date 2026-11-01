@@ -77,8 +77,19 @@ Additional hardware results (second session):
 | BLE scan impact on LLM latency | short request 362 ms average without scanning vs. 380 ms with continuous scanning (+5 %) |
 | Streamed token usage | reported (e.g. 2371 in / 603 out) |
 
+Third session (hardware):
+
+| Check | Observed |
+|---|---|
+| Soak: 100 tool-calling runs | 100/100, free heap ±0 B, largest block constant |
+| Soak: 50 runs with continuous BLE scanning | 50/50, +20 B, largest block constant, min free 16.8 KB |
+| Wi-Fi provisioning (SoftAP, SRP6a) start/stop | AP `PROV_E0DE54` up, QR/PoP shown; stop restores the previous network in about 1.6 s |
+| Agent deadline watchdog | 0 cancellations during the soak; decision logic is unit-tested |
+
 Still open:
 
+- **Provisioning end to end with the phone app.** The device side is verified.
+- **BLE auto-reconnect.** Needs a connectable allowlisted peripheral.
 - **BLE:** characteristic read on a real sensor (item 10) and peripheral pairing from a phone.
 - **Other servers and providers:** Ollama, LM Studio, vLLM, OpenAI. Anthropic passes from the host (`live_agent`) and **from the device**: TLS cert-bundle validated, `read_sensor chip_temp` → 31.6 °C, `gpio_write cooling_fan 1` with readback verified, about 3.1–3.5 s for 3 model turns, usage reported (755/221 and 1640/241 tokens).
 

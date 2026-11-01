@@ -79,6 +79,20 @@ reconnects once (~75 ms); no agent-level retry is needed.
 | OTA download + write (1.69 MB, HTTPS, private CA) | 12.9 s |
 | Anthropic `claude-haiku-5-5`, 3-turn tool workflow, from the board over TLS | 3.1–3.5 s |
 
+**Soak test on the device (`/soak`, llama-server + Gemma 4 E4B on the LAN, each run = sensor tool call + answer):**
+
+| Run | Result | Internal free heap, first → last | Largest free block | Lowest free heap ever |
+|---|---|---|---|---|
+| `/soak 100` | 100/100 ok, 0 errors, avg 5.4 s/run, 9 min | 80,491 → 80,491 B (±0) | 47,104 B constant | 20,272 B |
+| `/soak 50 ble` (continuous BLE scanning) | 50/50 ok, 0 errors, avg 9.7 s/run, 8 min | 73,631 → 73,651 B (+20) | 47,104 B constant | 16,772 B |
+
+There is no heap drift and the largest free block never shrank, so the
+soak showed no leak and no fragmentation. After the soak, the agent task's
+stack had 8,716 B free, and the watchdog had cancelled no runs.
+
+**Time sync after boot:** with two SNTP servers, the clock synced 1.2 s
+after Wi-Fi association (pool.ntp.org alone took about 30 s).
+
 **Not measured on the device yet:**
 
 | Metric | Command |
