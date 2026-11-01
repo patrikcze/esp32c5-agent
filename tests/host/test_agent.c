@@ -518,6 +518,44 @@ static void test_context_eviction(void)
     CHECK_EQ_INT(agent_run(&s_agent, TOOL_SRC_CONSOLE, big, &r), AG_ERROR);
 }
 
+static void test_watchdog(void)
+{
+    setup(LLM_KIND_OPENAI, sizeof(s_conv));
+    s_agent.budget.deadline_ms = 10000;
+    CHECK_EQ_INT(agent_watchdog_check(&s_agent, lla_now_ms(), 5000), AGENT_WD_OK); /* idle */
+    s_agent.run_started_ms = 1000;
+    CHECK_EQ_INT(agent_watchdog_check(&s_agent, 1000 + 14999, 5000), AGENT_WD_OK);
+    CHECK_EQ_INT(agent_watchdog_check(&s_agent, 1000 + 15000, 5000), AGENT_WD_CANCEL);
+    CHECK_EQ_INT(agent_watchdog_check(&s_agent, 1000 + 20000, 5000), AGENT_WD_RESTART);
+    s_agent.run_started_ms = 0;
+    /* a normal run marks itself active and idle again */
+    push()->body = oa_text("ok");
+    CHECK_EQ_INT(agent_run(&s_agent, TOOL_SRC_CONSOLE, "hi", NULL), AG_COMPLETED);
+    CHECK(s_agent.run_started_ms == 0);
+}
+
+/* Many runs through a small arena: the context stays bounded and nothing
+ * grows (ASan reports leaks/overflows if any path misbehaves). */
+static void test_soak_bounded(void)
+{
+    setup(LLM_KIND_OPENAI, 1024);
+    agent_run_result_t r;
+    int ok = 0;
+    for (int i = 0; i < 400; i++) {
+        mock_reset();
+        if (i % 2) {
+            push()->body = oa_call("c", "read_sensor", "{\\\"device\\\":\\\"room_temp\\\"}");
+            push()->body = oa_text("Temperature is 29.5 C.");
+        } else {
+            push()->body = oa_text("Hello, this is a reply that takes some room in the context arena.");
+        }
+        if (agent_run(&s_agent, TOOL_SRC_CONSOLE, "status please", &r) == AG_COMPLETED) ok++;
+        CHECK(s_agent.conv.len <= 1024);
+    }
+    CHECK_EQ_INT(ok, 400);
+    CHECK(s_agent.conv.evictions > 100);
+}
+
 static void test_call_hash_normalizes_whitespace(void)
 {
     const char *a = "{\"device\": \"x\", \"value\": 1}";
@@ -550,4 +588,6 @@ void suite_agent(void)
     RUN(test_anthropic_stream_workflow);
     RUN(test_context_eviction);
     RUN(test_call_hash_normalizes_whitespace);
+    RUN(test_watchdog);
+    RUN(test_soak_bounded);
 }

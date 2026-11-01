@@ -306,8 +306,18 @@ static bool run_call(agent_t *a, uint8_t i, agent_run_result_t *out)
     return true;
 }
 
+agent_wd_action_t agent_watchdog_check(const agent_t *a, uint64_t now, uint32_t grace_ms)
+{
+    uint64_t start = a->run_started_ms;
+    if (!start) return AGENT_WD_OK;
+    uint64_t limit = start + a->budget.deadline_ms + grace_ms;
+    if (now < limit) return AGENT_WD_OK;
+    return now < limit + grace_ms ? AGENT_WD_CANCEL : AGENT_WD_RESTART;
+}
+
 static agent_state_t finish(agent_t *a, agent_state_t st, agent_run_result_t *out, uint64_t t_start)
 {
+    a->run_started_ms = 0;
     out->final_state = st;
     out->elapsed_ms = (uint32_t)(lla_now_ms() - t_start);
     if (st != AG_COMPLETED) {
@@ -330,6 +340,7 @@ agent_state_t agent_run(agent_t *a, tool_source_t src, const char *request, agen
     uint64_t t_start = lla_now_ms();
     uint64_t deadline = t_start + a->budget.deadline_ms;
     a->run_id++;
+    a->run_started_ms = t_start ? t_start : 1;
     a->src = src;
     a->n_ledger = 0;
     a->loop_strikes = 0;

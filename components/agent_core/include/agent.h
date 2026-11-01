@@ -121,6 +121,7 @@ typedef struct agent {
     uint16_t run_id;
     tool_source_t src;
     agent_ledger_t ledger[AGENT_LEDGER_MAX];
+    volatile uint64_t run_started_ms; /* 0 while idle; read by the watchdog */
     uint8_t n_ledger;
     uint8_t loop_strikes;
     agent_run_result_t last;
@@ -144,6 +145,16 @@ void agent_cancel(agent_t *a);
 /** Clear the working context (user-requested). */
 void agent_clear_context(agent_t *a);
 const char *agent_last_text(const agent_t *a);
+
+/**
+ * Run supervision. A run must finish within its deadline; transports and
+ * tools enforce it cooperatively. If a run is still active `grace_ms` after
+ * its deadline it is cancelled; after a second grace period the task is
+ * considered hung and the caller should restart the device (outputs are
+ * driven safe by the shutdown handler).
+ */
+typedef enum { AGENT_WD_OK = 0, AGENT_WD_CANCEL, AGENT_WD_RESTART } agent_wd_action_t;
+agent_wd_action_t agent_watchdog_check(const agent_t *a, uint64_t now_ms, uint32_t grace_ms);
 
 /** Exposed for tests: normalized hash of (tool, args). */
 uint32_t agent_call_hash(const char *name, const char *args, size_t n);

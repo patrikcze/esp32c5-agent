@@ -14,6 +14,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_psram.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -171,6 +173,38 @@ static void hook_tool(void *u, const char *name, const char *args, const tool_re
     printf("  [tool] %s %.120s -> %s %.200s\n", name, args, tool_status_str(res->status), res->json);
 }
 
+/* ------------------------------------------------------------ supervision */
+
+/* The agent task cannot be on the task watchdog: one model request may
+ * legitimately block for its whole timeout. Instead a periodic check cancels
+ * runs that outlive their deadline and restarts the device if a cancelled
+ * run still does not end (outputs go safe via the shutdown handler). */
+#define WD_GRACE_MS 30000
+static uint32_t s_wd_cancels, s_wd_restarts_pending;
+
+static void wd_tick(void *arg)
+{
+    (void)arg;
+    switch (agent_watchdog_check(&s_agent, (uint64_t)(esp_timer_get_time() / 1000), WD_GRACE_MS)) {
+    case AGENT_WD_CANCEL:
+        if (!s_agent.cancel) {
+            ESP_LOGE(TAG, "watchdog: run exceeded its deadline by %d s, cancelling", WD_GRACE_MS / 1000);
+            s_wd_cancels++;
+            agent_cancel(&s_agent);
+        }
+        break;
+    case AGENT_WD_RESTART:
+        ESP_LOGE(TAG, "watchdog: cancelled run did not stop, restarting");
+        s_wd_restarts_pending++;
+        esp_restart();
+        break;
+    default:
+        break;
+    }
+}
+
+uint32_t agent_service_wd_cancels(void) { return s_wd_cancels; }
+
 /* ------------------------------------------------------------ task */
 
 static void agent_task(void *arg)
@@ -243,6 +277,9 @@ int agent_service_start(tool_registry_t *reg, const agent_service_env_t *env)
     /* TLS handshakes (mbedTLS) need a deep stack; measured high-water mark is
      * reported by /memory. */
     if (xTaskCreate(agent_task, "agent", CONFIG_LLA_AGENT_STACK, NULL, 4, &s_task) != pdPASS) return -1;
+    esp_timer_handle_t wd;
+    esp_timer_create_args_t wa = {.callback = wd_tick, .name = "agent_wd"};
+    if (esp_timer_create(&wa, &wd) != ESP_OK || esp_timer_start_periodic(wd, 5 * 1000 * 1000) != ESP_OK) return -1;
     ESP_LOGI(TAG, "agent buffers: req %u, resp %u, ctx %u, %u tokens (%s)", (unsigned)s_req_sz, (unsigned)s_resp_sz,
              (unsigned)s_conv_sz, ntoks, s_in_psram ? "PSRAM" : "internal RAM");
     return 0;
@@ -276,6 +313,8 @@ void agent_service_mem_report(void)
            (unsigned)s_req_sz, (unsigned)s_resp_sz, (unsigned)s_conv_sz, s_agent.conv.len,
            llm_conv_count(&s_agent.conv), s_agent.conv.evictions, s_in_psram ? "PSRAM" : "internal");
     printf("  agent_t        : %u B static\n", (unsigned)sizeof(agent_t));
+    printf("  agent watchdog : %u overdue runs cancelled (grace %d s after deadline)\n", (unsigned)s_wd_cancels,
+           WD_GRACE_MS / 1000);
     printf("  agent stack HWM: %u B free of %u\n", (unsigned)uxTaskGetStackHighWaterMark(s_task),
            (unsigned)CONFIG_LLA_AGENT_STACK);
     printf("  last run       : %u ms, %u turns, %u tools, largest request %u B\n", (unsigned)s_agent.last.elapsed_ms,
