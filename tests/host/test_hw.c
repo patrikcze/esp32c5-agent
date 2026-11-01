@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include "agent.h"
+#include "ble_mgr.h"
 #include "config.h"
 #include "event_engine.h"
 #include "periph.h"
@@ -769,8 +770,32 @@ void suite_rules(void)
     RUN(test_rules_offline);
 }
 
+static void test_ble_decoders(void)
+{
+    double v;
+    const char *u;
+    const uint8_t t[2] = {0x2c, 0x09}; /* 2348 → 23.48 C */
+    CHECK(ble_decode_known(0x2A6E, t, 2, &v, &u) && v > 23.47 && v < 23.49 && !strcmp(u, "C"));
+    const uint8_t tn[2] = {0x18, 0xfc}; /* -1000 → -10.00 C */
+    CHECK(ble_decode_known(0x2A6E, tn, 2, &v, &u) && v < -9.99 && v > -10.01);
+    const uint8_t tu[2] = {0x00, 0x80}; /* 0x8000 = unknown */
+    CHECK(!ble_decode_known(0x2A6E, tu, 2, &v, &u));
+    CHECK(!ble_decode_known(0x2A6E, t, 1, &v, &u)); /* wrong length */
+    const uint8_t h[2] = {0x88, 0x13}; /* 5000 → 50.00 % */
+    CHECK(ble_decode_known(0x2A6F, h, 2, &v, &u) && v > 49.99 && v < 50.01);
+    const uint8_t hu[2] = {0xff, 0xff};
+    CHECK(!ble_decode_known(0x2A6F, hu, 2, &v, &u));
+    const uint8_t b = 87, bad = 101;
+    CHECK(ble_decode_known(0x2A19, &b, 1, &v, &u) && v == 87);
+    CHECK(!ble_decode_known(0x2A19, &bad, 1, &v, &u));
+    const uint8_t p[4] = {0x40, 0x42, 0x0f, 0x00}; /* 1,000,000 → 100000.0 Pa */
+    CHECK(ble_decode_known(0x2A6D, p, 4, &v, &u) && v > 99999.9 && v < 100000.1);
+    CHECK(!ble_decode_known(0x2A00, p, 4, &v, &u)); /* unknown uuid → raw hex only */
+}
+
 void suite_events(void)
 {
+    RUN(test_ble_decoders);
     RUN(test_event_queue);
     RUN(test_debounce);
     RUN(test_triggers);

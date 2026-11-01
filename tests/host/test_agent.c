@@ -493,6 +493,7 @@ static void test_anthropic_stream_workflow(void)
     CHECK_EQ_INT(s_exec_sensor, 1);
     CHECK_EQ_INT(r.retries, 1);
     CHECK_CONTAINS(s_mock.reqs[0], "\"stream\":true");
+    CHECK(strstr(s_mock.reqs[0], "stream_options") == NULL); /* OpenAI-only field */
 }
 
 static void test_context_eviction(void)

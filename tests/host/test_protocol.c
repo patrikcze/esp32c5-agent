@@ -217,6 +217,26 @@ static void test_models_list(void)
     CHECK_EQ_INT(llm_parse_models(ls, strlen(ls), s_toks, 512, count_cb, &count), 1);
 }
 
+static void test_oa_request_stream_usage(void)
+{
+    char body[4096];
+    uint8_t cb[64];
+    llm_conv_t conv;
+    llm_conv_init(&conv, cb, sizeof(cb));
+    llm_conv_add_user(&conv, 1, "hi", 2);
+    llm_cfg_t c;
+    llm_cfg_default(&c, LLM_KIND_OPENAI);
+    llm_req_ctx_t ctx = {.system_prompt = "s", .conv = &conv};
+    lla_jw_t w;
+    lla_jw_init(&w, body, sizeof(body));
+    CHECK(llm_provider_openai.build(&c, &ctx, &w));
+    CHECK_CONTAINS(body, "\"stream_options\":{\"include_usage\":true}");
+    c.stream = false;
+    lla_jw_init(&w, body, sizeof(body));
+    CHECK(llm_provider_openai.build(&c, &ctx, &w));
+    CHECK(strstr(body, "stream_options") == NULL);
+}
+
 static void test_url_join(void)
 {
     char u[64];
@@ -241,6 +261,7 @@ void suite_openai(void)
     RUN(test_too_large);
     RUN(test_models_list);
     RUN(test_url_join);
+    RUN(test_oa_request_stream_usage);
 }
 
 void suite_anthropic(void)

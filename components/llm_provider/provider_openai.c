@@ -24,6 +24,13 @@ static bool oa_build(const llm_cfg_t *cfg, const llm_req_ctx_t *ctx, lla_jw_t *w
     lla_jw_kv_int(w, "max_tokens", cfg->max_tokens);
     if (cfg->temperature >= 0) lla_jw_kv_num(w, "temperature", cfg->temperature);
     lla_jw_kv_bool(w, "stream", cfg->stream);
+    if (cfg->stream) {
+        /* ask for the final usage chunk (choices:[]) so streamed runs report tokens */
+        lla_jw_key(w, "stream_options");
+        lla_jw_obj_begin(w);
+        lla_jw_kv_bool(w, "include_usage", true);
+        lla_jw_obj_end(w);
+    }
     lla_jw_key(w, "messages");
     lla_jw_arr_begin(w);
     if (ctx->system_prompt && ctx->system_prompt[0]) {

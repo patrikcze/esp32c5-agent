@@ -19,7 +19,7 @@ set(PORTABLE_SRCS
     ${C}/llm_provider/provider_anthropic.c
     ${C}/agent_core/agent.c
 )
-file(GLOB EXTRA_PORTABLE ${C}/hardware_hal/hal.c ${C}/peripheral_registry/*.c ${C}/event_engine/*.c ${C}/config_manager/config_core.c)
+file(GLOB EXTRA_PORTABLE ${C}/hardware_hal/hal.c ${C}/peripheral_registry/*.c ${C}/event_engine/*.c ${C}/config_manager/config_core.c ${C}/ble_manager/ble_profiles.c)
 list(FILTER EXTRA_PORTABLE EXCLUDE REGEX ".*_esp\\.c$")
 
 file(GLOB TEST_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
@@ -29,7 +29,7 @@ target_include_directories(llmagent_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${C}/lla_common/include ${C}/tool_registry/include ${C}/llm_provider/include
     ${C}/agent_core/include ${C}/peripheral_registry/include ${C}/event_engine/include
-    ${C}/config_manager/include ${C}/hardware_hal/include)
+    ${C}/config_manager/include ${C}/hardware_hal/include ${C}/ble_manager/include)
 target_compile_definitions(llmagent_tests PRIVATE FIXTURE_DIR="${ROOT}/tests/protocol/fixtures" LLA_HOST_TEST=1)
 target_compile_options(llmagent_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter -Wshadow -Wformat=2)
 target_link_libraries(llmagent_tests PRIVATE m)
