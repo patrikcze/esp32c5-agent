@@ -720,8 +720,29 @@ static void test_conv(void)
     CHECK_EQ_INT(c.len, 0);
 }
 
+static void test_default_profile_loads(void)
+{
+    hal_set(&k_mock_hal);
+    periph_init(&board_esp32c5_devkitc1);
+    size_t n;
+    char *js = test_read_file("../../../main/default_profile.json", &n);
+    char err[128] = "";
+    CHECK_EQ_INT(periph_load_profile(js, n, err, sizeof(err)), PER_OK);
+    CHECK_STR(err, "");
+    lla_jtok_t t[256];
+    CHECK(lla_json_parse(js, n, t, 256) > 0);
+    rules_t rs;
+    rules_env_t env = {.actuate = act, .lock = lockf, .emit = emit, .find_dev = periph_find};
+    rules_init(&rs, &env);
+    CHECK_EQ_INT(rules_parse(&rs, js, t, lla_json_obj_get(js, t, 0, "rules"), err, sizeof(err)), 0);
+    triggers_t ts;
+    CHECK_EQ_INT(triggers_parse(&ts, js, t, lla_json_obj_get(js, t, 0, "triggers"), periph_find, err, sizeof(err)), 0);
+    free(js);
+}
+
 void suite_periph(void)
 {
+    RUN(test_default_profile_loads);
     RUN(test_profile_validation);
     RUN(test_actuation_policy);
     RUN(test_max_on_watchdog);

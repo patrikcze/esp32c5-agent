@@ -42,3 +42,14 @@ enable_testing()
 foreach(s json registry openai anthropic conv agent periph rules events config)
     add_test(NAME ${s} COMMAND llmagent_tests ${s})
 endforeach()
+
+# Live protocol test against a running server (not part of ctest):
+#   ./live_agent openai http://127.0.0.1:8080/v1 <model> [stream 0|1]
+add_executable(live_agent ${ROOT}/tests/integration/live_agent.c ${PORTABLE_SRCS})
+target_include_directories(live_agent PRIVATE ${C}/lla_common/include ${C}/tool_registry/include
+    ${C}/llm_provider/include ${C}/agent_core/include)
+target_compile_options(live_agent PRIVATE -Wall -Wextra -Wno-unused-parameter)
+if(LLA_SANITIZE)
+    target_compile_options(live_agent PRIVATE -fsanitize=address,undefined)
+    target_link_options(live_agent PRIVATE -fsanitize=address,undefined)
+endif()
