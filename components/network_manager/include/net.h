@@ -54,6 +54,8 @@ llm_transport_t *net_transport(void);
 /** Load a PEM trust anchor (private CA for local servers). NULL clears. */
 int net_set_ca_pem(const char *pem);
 bool net_has_custom_ca(void);
+/** The active private CA (sanitised PEM) or NULL. */
+const char *net_custom_ca(void);
 
 /** OTA from an https URL; reboots on success. */
 int net_ota(const char *url);

@@ -16,6 +16,7 @@
 #include <strings.h>
 
 #include "esp_crt_bundle.h"
+#include "mbedtls/x509_crt.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -43,6 +44,26 @@ int net_set_ca_pem(const char *pem)
         if (!strstr(pem, "-----BEGIN CERTIFICATE-----")) return -1;
         s_ca_pem = strdup(pem);
         if (!s_ca_pem) return -2;
+        /* Serial pastes arrive with CR translated to LF, i.e. a blank line
+         * after every line: drop CRs and empty lines (PEM needs neither). */
+        char *w = s_ca_pem;
+        char prev = '\n';
+        for (const char *r = s_ca_pem; *r; r++) {
+            if (*r == '\r' || (*r == '\n' && prev == '\n')) continue;
+            *w++ = prev = *r;
+        }
+        *w = '\0';
+        /* reject a damaged paste now instead of failing at the next handshake */
+        mbedtls_x509_crt crt;
+        mbedtls_x509_crt_init(&crt);
+        int prc = mbedtls_x509_crt_parse(&crt, (const unsigned char *)s_ca_pem, strlen(s_ca_pem) + 1);
+        mbedtls_x509_crt_free(&crt);
+        if (prc != 0) {
+            ESP_LOGE(TAG, "CA PEM does not parse (mbedtls -0x%04x)", (unsigned)-prc);
+            free(s_ca_pem);
+            s_ca_pem = NULL;
+            return -3;
+        }
     }
     if (s_cli) { /* force a new handshake with the new trust anchor */
         esp_http_client_cleanup(s_cli);

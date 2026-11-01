@@ -16,7 +16,6 @@
 
 static const char *TAG = "ota";
 
-const char *net_custom_ca(void);
 
 int net_ota(const char *url)
 {
@@ -24,7 +23,8 @@ int net_ota(const char *url)
         ESP_LOGE(TAG, "OTA requires https");
         return -1;
     }
-    if (!net_wait_ready(10000, true)) {
+    /* certificate validity needs wall-clock time; SNTP can take ~30 s */
+    if (!net_wait_ready(45000, true)) {
         ESP_LOGE(TAG, "network/time not ready");
         return -2;
     }

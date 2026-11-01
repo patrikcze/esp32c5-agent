@@ -63,7 +63,7 @@ static int c_help(int argc, char **argv)
            "  /status                           overall status\n"
            "  /wifi [set <ssid> <pass>|scan|drop]\n"
            "  /provider [show|use openai|anthropic|url <u>|model <m>|key <k>|stream on|off|\n"
-           "             maxtok <n>|compat on|off|ca|ca clear]\n"
+           "             maxtok <n>|compat on|off|ca begin|add|end|clear]\n"
            "  /models                           list models from the active provider\n"
            "  /tools                            registered tools and permissions\n"
            "  /policy [show|<source> <read|actuate|config|dangerous>|auto-allow <tool>|deny <tool>|save]\n"
@@ -148,20 +148,67 @@ static int c_wifi(int argc, char **argv)
 
 /* ------------------------------------------------------------ /provider */
 
-static int read_pem(char *out, size_t cap)
+/* Private CA entry. PEM is entered one line per command
+ * (/provider ca begin | add <line> | end): reading raw stdin inside a command
+ * races with the REPL's own line reader and loses lines. */
+static char *s_ca_stage;
+static size_t s_ca_len;
+
+static int ca_cmd(int argc, char **argv)
 {
-    printf("paste PEM certificate, end with the -----END CERTIFICATE----- line:\n");
-    size_t n = 0;
-    char line[128];
-    while (fgets(line, sizeof(line), stdin)) {
-        size_t l = strlen(line);
-        if (n + l + 1 >= cap) return -1;
-        memcpy(out + n, line, l);
-        n += l;
-        out[n] = '\0';
-        if (strstr(line, "-----END CERTIFICATE-----")) return (int)n;
+    const char *sub = argc >= 3 ? argv[2] : "";
+    if (is(sub, "clear")) {
+        cfg_erase(CFG_NS, "ca_pem");
+        net_set_ca_pem(NULL);
+        printf("custom CA removed; using the ESP x509 bundle\n");
+        return 0;
     }
-    return -1;
+    if (is(sub, "begin")) {
+        free(s_ca_stage);
+        s_ca_stage = scratch(3072);
+        s_ca_len = 0;
+        if (s_ca_stage) s_ca_stage[0] = '\0';
+        printf(s_ca_stage ? "ok: send each PEM line with /provider ca add <line>, then /provider ca end\n" : "no memory\n");
+        return s_ca_stage == NULL;
+    }
+    if (is(sub, "add") && argc >= 4) {
+        if (!s_ca_stage) {
+            printf("run /provider ca begin first\n");
+            return 1;
+        }
+        char line[160];
+        join(argc, argv, 3, line, sizeof(line));
+        size_t l = strlen(line);
+        if (s_ca_len + l + 2 >= 3072) {
+            printf("PEM too large\n");
+            return 1;
+        }
+        memcpy(s_ca_stage + s_ca_len, line, l);
+        s_ca_len += l;
+        s_ca_stage[s_ca_len++] = '\n';
+        s_ca_stage[s_ca_len] = '\0';
+        printf("line %u ok\n", (unsigned)l);
+        return 0;
+    }
+    if (is(sub, "end")) {
+        if (!s_ca_stage) {
+            printf("run /provider ca begin first\n");
+            return 1;
+        }
+        int rc = net_set_ca_pem(s_ca_stage);
+        free(s_ca_stage);
+        s_ca_stage = NULL;
+        if (rc != 0) {
+            printf("invalid PEM (rejected, nothing changed)\n");
+            return 1;
+        }
+        rc = cfg_set_str(CFG_NS, "ca_pem", net_custom_ca()) < 0;
+        printf("custom CA (%u bytes, parsed OK) %s\n", (unsigned)strlen(net_custom_ca()),
+               rc ? "loaded but NOT persisted" : "stored");
+        return rc;
+    }
+    printf("usage: /provider ca begin | add <pem line> | end | clear\n");
+    return 1;
 }
 
 static int c_provider(int argc, char **argv)
@@ -205,22 +252,8 @@ static int c_provider(int argc, char **argv)
         }
         c.max_tokens = (uint16_t)v;
     } else if (argc >= 2 && is(argv[1], "ca")) {
-        save = false;
-        if (argc >= 3 && is(argv[2], "clear")) {
-            cfg_erase(CFG_NS, "ca_pem");
-            net_set_ca_pem(NULL);
-            printf("custom CA removed; using the ESP x509 bundle\n");
-        } else {
-            char *pem = scratch(3072);
-            if (!pem || read_pem(pem, 3072) < 0 || net_set_ca_pem(pem) != 0) {
-                printf("invalid or too large PEM\n");
-                free(pem);
-                return 1;
-            }
-            rc = cfg_set_str(CFG_NS, "ca_pem", pem) < 0;
-            free(pem);
-            printf("custom CA %s\n", rc ? "loaded but NOT persisted" : "stored");
-        }
+        memset(&c, 0, sizeof(c));
+        return ca_cmd(argc, argv);
     } else {
         save = false;
         for (int k = 0; k < LLM_KIND_COUNT; k++) {
