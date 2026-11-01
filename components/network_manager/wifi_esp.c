@@ -164,7 +164,8 @@ int net_init(net_event_cb_t cb)
     /* Modem sleep is mandatory when Wi-Fi and BLE coexist. */
     esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
-    esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    /* two servers: pool.ntp.org alone took ~30 s to answer on some networks */
+    esp_sntp_config_t sc = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(2, ESP_SNTP_SERVER_LIST("time.google.com", "pool.ntp.org"));
     sc.sync_cb = time_synced;
     esp_netif_sntp_init(&sc);
     s_inited = true;

@@ -159,7 +159,7 @@ static llm_tr_err_t perform_locked(const llm_http_req_t *req, const llm_http_sin
         }
     }
     if (!net_wait_ready(0, false)) return LLM_TR_NO_NETWORK;
-    if (https && !net_wait_ready(5000, true)) {
+    if (https && !net_wait_ready(15000, true)) {
         ESP_LOGW(TAG, "time not synchronised: certificate validity cannot be checked");
         return LLM_TR_NO_NETWORK;
     }
