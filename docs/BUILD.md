@@ -59,8 +59,9 @@ button for 5 s.
 
 1. The board opens an access point named `PROV_XXXXXX`.
 2. Install Espressif's **ESP SoftAP Provisioning** app (iOS/Android), or use
-   `$IDF_PATH/tools/esp_prov/esp_prov.py --transport softap --sec_ver 1 --pop <PoP>`.
-3. Enter the proof-of-possession (PoP). It is a per-device 8-character code,
+   `$IDF_PATH/tools/esp_prov/esp_prov.py --transport softap --sec_ver 2 --sec2_username wifiprov --sec2_pwd <PoP>`.
+3. Enter username `wifiprov` and the proof-of-possession (PoP). The PoP is a
+   per-device 12-character code,
    shown by `/wifi prov info` and printed when provisioning starts. You can
    instead scan the QR payload printed there.
 4. Pick your network and enter the password. The board joins the network

@@ -95,21 +95,23 @@ idf.py -B build-secure -D SDKCONFIG=build-secure/sdkconfig -D "SDKCONFIG_DEFAULT
 ## Wi-Fi provisioning
 
 Provisioning uses ESP-IDF `wifi_provisioning` over SoftAP with protocomm
-**security 1**: an x25519 key exchange, the proof-of-possession, and
-AES-CTR session encryption.
+**security 2**: SRP6a authentication with username `wifiprov` and the PoP as
+the password, then an AES-GCM session. A fresh salt and verifier are
+generated for every session. With SRP6a, a recorded session cannot be used
+to guess the PoP offline; guessing is limited to online attempts within the
+10-minute window.
 
 - **The access point is open, but the session is not.** Without the PoP,
   credentials cannot be sent or read.
-- **The PoP is generated once per device** and stored in `llasec`. Treat it
-  like a label secret.
+- **The PoP has 12 characters (about 59 bits).** It is generated once per
+  device and stored in `llasec`. Treat it like a label secret.
 - **Credentials are stored in one place only.** The provisioning manager also
   writes them to the Wi-Fi driver's NVS area; the firmware overwrites that
   copy after moving the credentials to `llasec`.
 - **Starting it is a local action:** no credentials stored, the console, or
   holding BOOT for 5 s. It cannot be started remotely.
-- **Limits:** it stops after 10 minutes. Security 2 (SRP6a) would be stronger
-  against an attacker who records the session and later learns the PoP; it is
-  not used, because it needs per-device salt and verifier provisioning.
+- **Limits:** it stops after 10 minutes. The PoP is shown on the local
+  console, which is a trusted channel in this threat model.
 
 ## Agent supervision
 

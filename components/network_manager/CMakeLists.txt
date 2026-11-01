@@ -1,1 +1,1 @@
-idf_component_register(SRCS "wifi_esp.c" "http_transport_esp.c" "ota_esp.c" "provision_esp.c" INCLUDE_DIRS "include" REQUIRES llm_provider PRIV_REQUIRES config_manager esp_wifi esp_netif esp_event esp_http_client esp_https_ota mbedtls esp_timer wifi_provisioning)
+idf_component_register(SRCS "wifi_esp.c" "http_transport_esp.c" "ota_esp.c" "provision_esp.c" INCLUDE_DIRS "include" REQUIRES llm_provider PRIV_REQUIRES config_manager esp_wifi esp_netif esp_event esp_http_client esp_https_ota mbedtls esp_timer wifi_provisioning protocomm)

@@ -1,10 +1,12 @@
 /*
  * provision_esp.c — headless Wi-Fi provisioning (ESP-IDF wifi_provisioning,
- * SoftAP scheme, protocomm security 1 with a proof-of-possession).
+ * SoftAP scheme, protocomm security 2 = SRP6a with a proof-of-possession).
  *
  * The device opens an AP "PROV_xxxxxx"; the Espressif "ESP SoftAP
  * Provisioning" app (or tools/esp_prov/esp_prov.py) connects, proves the PoP
- * (x25519 session + AES-CTR) and sends SSID/password.
+ * with SRP6a (username "wifiprov", password = PoP; AES-GCM session) and
+ * sends SSID/password. SRP6a means a recorded session does not allow
+ * offline guessing of the PoP, unlike security 1.
  *
  * The SoftAP scheme is used instead of the BLE scheme because the BLE scheme
  * initialises NimBLE itself, which would conflict with ble_manager.
@@ -18,6 +20,7 @@
  * BOOT button for 5 s. Stops itself after 10 minutes.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "sdkconfig.h"
@@ -28,6 +31,7 @@
 #include "esp_mac.h"
 #include "esp_random.h"
 #include "esp_timer.h"
+#include "esp_srp.h"
 #include "esp_wifi.h"
 #include "net.h"
 #include "wifi_provisioning/manager.h"
@@ -36,6 +40,8 @@
 static const char *TAG = "prov";
 
 #define PROV_TIMEOUT_US (10ULL * 60 * 1000 * 1000)
+#define PROV_USER "wifiprov" /* default username of Espressif's provisioning apps */
+#define POP_LEN 12           /* 31-symbol alphabet: ~59 bits */
 
 void net_internal_set_prov(bool active);
 int net_internal_apply_credentials(const char *ssid, const char *pass);
@@ -46,13 +52,15 @@ static esp_timer_handle_t s_timeout;
 static char s_ssid[33], s_pass[65];
 static bool s_got_creds;
 static char s_service[16];
+static char *s_salt, *s_verifier;
+static wifi_prov_security2_params_t s_sec2;
 
 static void pop_get(char *pop, size_t cap)
 {
-    if (cfg_get_str(CFG_NS_SECRET, "prov_pop", pop, cap) == CFG_OK && strlen(pop) >= 8) return;
+    if (cfg_get_str(CFG_NS_SECRET, "prov_pop", pop, cap) == CFG_OK && strlen(pop) >= POP_LEN) return;
     static const char cs[] = "abcdefghjkmnpqrstuvwxyz23456789"; /* no look-alike characters */
-    for (int i = 0; i < 8; i++) pop[i] = cs[esp_random() % (sizeof(cs) - 1)];
-    pop[8] = '\0';
+    for (int i = 0; i < POP_LEN; i++) pop[i] = cs[esp_random() % (sizeof(cs) - 1)];
+    pop[POP_LEN] = '\0';
     cfg_set_str(CFG_NS_SECRET, "prov_pop", pop);
 }
 
@@ -61,6 +69,13 @@ static void service_name(char *out, size_t cap)
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(out, cap, "PROV_%02X%02X%02X", mac[3], mac[4], mac[5]);
+}
+
+static void free_sec2(void)
+{
+    free(s_salt);
+    free(s_verifier);
+    s_salt = s_verifier = NULL;
 }
 
 static void finish_with_credentials(void)
@@ -126,6 +141,7 @@ static void on_prov(void *arg, esp_event_base_t base, int32_t id, void *data)
                 ESP_LOGI(TAG, "restored previous network '%s'", ssid);
             }
         }
+        free_sec2();
         s_active = false;
         net_internal_set_prov(false);
         ESP_LOGI(TAG, "provisioning service stopped");
@@ -151,10 +167,12 @@ void net_prov_print_info(void)
     char svc[16];
     service_name(svc, sizeof(svc));
     printf("provisioning %s\n", s_active ? "ACTIVE" : "inactive");
-    printf("  access point : %s (open; the session itself is encrypted)\n", svc);
+    printf("  access point : %s (open; the session is SRP6a-authenticated and encrypted)\n", svc);
+    printf("  username     : %s\n", PROV_USER);
     printf("  PoP          : %s\n", pop);
     printf("  app          : Espressif \"ESP SoftAP Provisioning\" (iOS/Android)\n");
-    printf("  QR payload   : {\"ver\":\"v1\",\"name\":\"%s\",\"pop\":\"%s\",\"transport\":\"softap\"}\n", svc, pop);
+    printf("  QR payload   : {\"ver\":\"v1\",\"name\":\"%s\",\"username\":\"%s\",\"pop\":\"%s\",\"transport\":\"softap\"}\n",
+           svc, PROV_USER, pop);
     memset(pop, 0, sizeof(pop));
 }
 
@@ -178,11 +196,20 @@ int net_prov_start(void)
     char pop[16];
     pop_get(pop, sizeof(pop));
     service_name(s_service, sizeof(s_service));
-    esp_err_t e = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_1, (const void *)pop, s_service, NULL);
+    /* fresh salt + verifier per session; the PoP itself never goes on the air */
+    int vlen = 0;
+    esp_err_t e = esp_srp_gen_salt_verifier(PROV_USER, strlen(PROV_USER), pop, strlen(pop), &s_salt, 16, &s_verifier,
+                                            &vlen);
     memset(pop, 0, sizeof(pop));
+    if (e == ESP_OK) {
+        s_sec2 = (wifi_prov_security2_params_t){.salt = s_salt, .salt_len = 16, .verifier = s_verifier,
+                                                .verifier_len = (uint16_t)vlen};
+        e = wifi_prov_mgr_start_provisioning(WIFI_PROV_SECURITY_2, &s_sec2, s_service, NULL);
+    }
     if (e != ESP_OK) {
         ESP_LOGE(TAG, "start failed: %s", esp_err_to_name(e));
         wifi_prov_mgr_deinit();
+        free_sec2();
         s_active = false;
         net_internal_set_prov(false);
         return -3;
