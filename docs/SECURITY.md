@@ -92,6 +92,37 @@ idf.py -B build-secure -D SDKCONFIG=build-secure/sdkconfig -D "SDKCONFIG_DEFAULT
   credentials are configured. Otherwise the bootloader rolls back.
 - With Secure Boot V2, unsigned images are rejected.
 
+## Wi-Fi provisioning
+
+Provisioning uses ESP-IDF `wifi_provisioning` over SoftAP with protocomm
+**security 1**: an x25519 key exchange, the proof-of-possession, and
+AES-CTR session encryption.
+
+- **The access point is open, but the session is not.** Without the PoP,
+  credentials cannot be sent or read.
+- **The PoP is generated once per device** and stored in `llasec`. Treat it
+  like a label secret.
+- **Credentials are stored in one place only.** The provisioning manager also
+  writes them to the Wi-Fi driver's NVS area; the firmware overwrites that
+  copy after moving the credentials to `llasec`.
+- **Starting it is a local action:** no credentials stored, the console, or
+  holding BOOT for 5 s. It cannot be started remotely.
+- **Limits:** it stops after 10 minutes. Security 2 (SRP6a) would be stronger
+  against an attacker who records the session and later learns the PoP; it is
+  not used, because it needs per-device salt and verifier provisioning.
+
+## Agent supervision
+
+The agent task is not on the task watchdog, because one model request may
+legitimately block for its whole timeout. A periodic check handles a
+runaway run instead:
+
+- **30 s after the run's deadline:** the run is cancelled.
+- **30 s after that:** if it still hasn't ended, the device restarts. The
+  shutdown handler drives outputs to their safe state first.
+
+The `events` control task stays on the task watchdog.
+
 ## Remote interface
 
 No HTTP or WebSocket API is implemented. The brief marked it optional, and

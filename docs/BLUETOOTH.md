@@ -16,6 +16,17 @@ with up to 2 connections and up to 4 bonds stored in NVS.
 | write | `ble_write_characteristic` | — (agent only) | ≤ 20 bytes; only devices allowlisted with `rw` |
 | notify | `ble_subscribe_notifications` | `/ble sub <uuid>` | finds and writes the CCCD; notifications become `ble_seen` events |
 
+**Auto-reconnect.** After a connection you made with `ble_connect` or
+`/ble connect` drops unexpectedly, the board reconnects in the background.
+
+- **Backoff:** 1 s, doubling to 30 s, at most 6 attempts.
+- **On every attempt** the allowlist is checked again. The GATT table is kept,
+  and notification subscriptions are re-enabled.
+- **It stops** when you disconnect deliberately or when the attempts run out.
+- **Status:** `/ble` shows whether reconnect is armed or pending.
+- **Not yet hardware-verified:** this needs a connectable allowlisted
+  peripheral.
+
 The allowlist is managed locally (`/ble allow aa:bb:cc:dd:ee:ff [rw]`,
 `/ble deny …`) and persisted. The model can never add devices to it. Some
 phones and sensors use resolvable private addresses that change over time.

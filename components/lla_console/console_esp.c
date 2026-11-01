@@ -5,6 +5,7 @@
  * Secrets typed here are stored in the secret NVS namespace and are never
  * echoed back (only "<set, N chars>").
  */
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,6 +79,7 @@ static int c_help(int argc, char **argv)
            "  /ota <https-url>                  firmware update\n"
 #if CONFIG_LLA_BENCHMARK
            "  /bench [json|llm <n> [ble]]       benchmarks (ble: scan concurrently)\n"
+           "  /soak <runs> [ble]                repeated tool runs with heap tracking\n"
 #endif
            "  /reset [reboot|factory|context]\n");
     return 0;
@@ -723,6 +725,64 @@ static int c_bench(int argc, char **argv)
     printf("usage: /bench json | /bench llm <n> [ble]\n");
     return 1;
 }
+
+/* /soak <runs> [ble]: repeated tool-calling runs (optionally with
+ * continuous BLE scanning) recording heap after every run, to show leaks
+ * (free heap drifting down) or fragmentation (largest block shrinking). */
+static int c_soak(int argc, char **argv)
+{
+    int n = argc >= 2 ? atoi(argv[1]) : 20;
+    if (n < 1 || n > 1000) n = 20;
+    bool with_ble = argc >= 3 && is(argv[2], "ble");
+#if CONFIG_LLA_ENABLE_BLE
+    if (with_ble) {
+        s_bench_ble = true;
+        xTaskCreate(bench_ble_task, "bench_ble", 3072, NULL, 3, NULL);
+    }
+#endif
+    size_t f0 = 0, l0 = 0, f1 = 0, l1 = 0;
+    size_t lmin = SIZE_MAX;
+    uint32_t ok = 0, err = 0, ms_sum = 0, tools = 0;
+    int64_t t0 = esp_timer_get_time();
+    for (int i = 0; i < n; i++) {
+        if (!agent_service_submit(TOOL_SRC_CONSOLE, "Read chip_temp with the tool and reply with the value only.")) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+        while (!agent_service_busy()) vTaskDelay(pdMS_TO_TICKS(20));
+        while (agent_service_busy()) vTaskDelay(pdMS_TO_TICKS(50));
+        const agent_run_result_t *r = &agent_service_agent()->last;
+        if (r->final_state == AG_COMPLETED) {
+            ok++;
+            ms_sum += r->elapsed_ms;
+            tools += r->tool_calls;
+        } else {
+            err++;
+        }
+        size_t f = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        size_t l = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        if (i == 0) {
+            f0 = f;
+            l0 = l;
+        }
+        f1 = f;
+        l1 = l;
+        if (l < lmin) lmin = l;
+        printf("soak %d/%d %s %ums free=%u largest=%u min_ever=%u\n", i + 1, n, r->final_state == AG_COMPLETED ? "ok" : "ERR",
+               (unsigned)r->elapsed_ms, (unsigned)f, (unsigned)l,
+               (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+    }
+#if CONFIG_LLA_ENABLE_BLE
+    s_bench_ble = false;
+#endif
+    printf("SOAK %s: %u ok, %u errors, %u tool calls, avg %u ms/run, %lld s total\n", with_ble ? "+ble" : "",
+           (unsigned)ok, (unsigned)err, (unsigned)tools, ok ? (unsigned)(ms_sum / ok) : 0,
+           (esp_timer_get_time() - t0) / 1000000);
+    printf("SOAK heap internal: free %u -> %u (%+d B), largest block %u -> %u (lowest %u), min-ever %u\n",
+           (unsigned)f0, (unsigned)f1, (int)f1 - (int)f0, (unsigned)l0, (unsigned)l1, (unsigned)lmin,
+           (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL));
+    return 0;
+}
 #endif
 
 /* ------------------------------------------------------------ registration */
@@ -760,6 +820,7 @@ int console_start(tool_registry_t *reg, const console_env_t *env)
         {.command = "/reset", .help = "reset", .func = c_reset},
 #if CONFIG_LLA_BENCHMARK
         {.command = "/bench", .help = "benchmarks", .func = c_bench},
+        {.command = "/soak", .help = "soak test", .func = c_soak},
 #endif
 #if CONFIG_LLA_ENABLE_BLE
         {.command = "/ble", .help = "bluetooth LE", .func = console_ble_cmd},

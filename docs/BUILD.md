@@ -51,6 +51,25 @@ idf.py -p /dev/cu.usbserial-110 flash monitor
 On the DevKitC-1, use the **UART** USB-C port: the console runs on UART0
 (GPIO11/12). Exit the monitor with Ctrl+].
 
+## Wi-Fi provisioning without a cable
+
+If no Wi-Fi credentials are stored, the board starts provisioning by
+itself. You can also start it with `/wifi prov`, or by holding the **BOOT**
+button for 5 s.
+
+1. The board opens an access point named `PROV_XXXXXX`.
+2. Install Espressif's **ESP SoftAP Provisioning** app (iOS/Android), or use
+   `$IDF_PATH/tools/esp_prov/esp_prov.py --transport softap --sec_ver 1 --pop <PoP>`.
+3. Enter the proof-of-possession (PoP). It is a per-device 8-character code,
+   shown by `/wifi prov info` and printed when provisioning starts. You can
+   instead scan the QR payload printed there.
+4. Pick your network and enter the password. The board joins the network
+   and stores the credentials in the secret namespace.
+
+Provisioning stops automatically after 10 minutes. `/wifi prov stop` ends it
+early and returns to the previously stored network. Build with
+`CONFIG_LLA_WIFI_PROV=n` to leave it out, which saves about 95 KB of flash.
+
 ## First-time configuration (serial console)
 
 ```
